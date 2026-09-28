@@ -3,15 +3,15 @@
 S1 (nodes):  0.4 * format + 0.6 * node semantic recall vs. GPT-5 reference nodes.
 S2 (edges):  one of three edge rewards
   - ``azure``       : 0.2 * format + 0.8 * LLM-judge edge plausibility − 0.2 if > 10 edges
-                      (the reward used for the released Qwen3-Observer-800)
+                      (the paper's S2 reward; plausibility = mean judge score mapped to [-1, 1])
   - ``local``       : 0.3 * format + 0.5 * local Qwen3-0.6B Yes/No classifier score
   - ``format_only`` : 0.3 * format (clipped to [-0.5, 0.5]); optionally dumps every
                       proposed edge to JSONL — used to harvest edges for the
                       edge-classifier training data.
 
-See README "Known issues" for the two behaviours kept for reproducibility:
-the Azure judge's per-rollout z-normalisation (``edge_score_norm="group"``) and
-the local reward's rank-0 broadcast (``per_rank=False``).
+Group-relative normalisation of the final reward is left to GRPO itself, so
+edge scores are *not* normalised inside a rollout: the edge term is the raw
+mean plausibility, which is what makes plausible graphs score higher.
 """
 
 from __future__ import annotations
@@ -139,16 +139,12 @@ class AzureAsyncRewardEngine:
         max_concurrent: int = 3,
         max_retries: int = 5,
         temperature: float = 1.0,
-        edge_score_norm: str = "group",
     ):
-        if edge_score_norm not in ("group", "none"):
-            raise ValueError("edge_score_norm must be 'group' or 'none'")
         self.client = client
         self.deployment_name = deployment_name
         self.semaphore = asyncio.Semaphore(max_concurrent)
         self.max_retries = max_retries
         self.temperature = temperature
-        self.edge_score_norm = edge_score_norm
 
     def build_prompt(self, complaints: str, edges: List[str]) -> str:
         prompt = f"""This is the Presenting Complaints of the mental health patient:
@@ -209,13 +205,9 @@ Symptom Relationships:
     async def score_batch(self, complaints: str, edges: List[str]) -> np.ndarray:
         raw_output = await self.call_api(self.build_prompt(complaints, edges))
         results = self.safe_json_parse(raw_output)
-        reward_dict = {item["edge_id"]: item["score"] for item in results}
-        scores = np.array([2 * reward_dict[i] - 1 for i in range(len(edges))])  # -> [-1, 1]
-        if self.edge_score_norm == "group":
-            # Original behaviour: z-normalise within the rollout. The caller then
-            # takes the mean, which is ~0 by construction (see README, Known issues).
-            scores = (scores - scores.mean()) / (scores.std() + 1e-6)
-        return scores
+        reward_dict = {int(item["edge_id"]): float(item["score"]) for item in results}
+        # 0..1 judge score -> [-1, 1]; an edge the judge skipped counts as uncertain (0.5).
+        return np.array([2 * min(max(reward_dict.get(i, 0.5), 0.0), 1.0) - 1 for i in range(len(edges))])
 
 
 def llm_edge_plausibility(complaints: str, edges: List[Dict[str, str]], reward_engine: AzureAsyncRewardEngine) -> float:
@@ -271,18 +263,9 @@ def _edge_cache_key(complaints: str, edges: List[Dict[str, str]]) -> str:
     return hashlib.sha256(s.encode("utf-8")).hexdigest()
 
 
-def symptom_graph_reward_s2_local(match_regex, model, tokenizer, per_rank: bool = False) -> Callable:
-    """Local-classifier edge reward.
-
-    per_rank=False reproduces the original run: only rank 0 scores (its own)
-    completions and broadcasts the rewards to every rank. per_rank=True has each
-    rank score its own completions (correct under DDP).
-    """
+def symptom_graph_reward_s2_local(match_regex, model, tokenizer) -> Callable:
+    """Local-classifier edge reward. Each rank scores its own completions (DDP-safe)."""
     import torch
-    import torch.distributed as dist
-
-    def is_rank_0():
-        return (not dist.is_initialized()) or dist.get_rank() == 0
 
     yes_ids = tokenizer.encode("Yes", add_special_tokens=False)
     no_ids = tokenizer.encode("No", add_special_tokens=False)
@@ -342,14 +325,7 @@ def symptom_graph_reward_s2_local(match_regex, model, tokenizer, per_rank: bool 
         return rewards
 
     def reward_fn(prompts, completions, complaints, **kwargs):
-        if per_rank:
-            return compute(completions, complaints)
-        device = next(model.parameters()).device
-        rewards = compute(completions, complaints) if is_rank_0() else [0.0] * len(completions)
-        tensor = torch.tensor(rewards, dtype=torch.float32, device=device)
-        if dist.is_initialized():
-            dist.broadcast(tensor, src=0)
-        return tensor.tolist()
+        return compute(completions, complaints)
 
     return reward_fn
 

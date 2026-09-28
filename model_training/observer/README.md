@@ -123,9 +123,8 @@ done
 ```
 
 Settings:
-- Reward: `0.2·format + 0.8·edge_plausibility − 0.2·[#edges > 10]`. The judge is `ANGEL_EDGE_JUDGE_DEPLOYMENT` (gpt-5-mini) at up to 3 concurrent requests.
+- Reward: `0.2·format + 0.8·edge_plausibility − 0.2·[#edges > 10]`. The judge (`ANGEL_EDGE_JUDGE_DEPLOYMENT`, gpt-5-mini, up to 3 concurrent requests) scores every proposed edge 0–1; `edge_plausibility` is the mean score mapped to [-1, 1]. GRPO normalises the final reward across the generations of each prompt, so edge scores are not normalised again inside a rollout.
 - Training: lr 1e-5; 4 generations per prompt; LoRA r=32, α=64.
-- **Read Known issue 1 before retraining.** Add `--edge-score-norm none` for a reward that actually uses the judge's scores.
 
 The surviving adapters (`…-set2-{400,600,700,800}-gpt`) and W&B runs show 100-step
 increments ending at 800. The earliest increments cannot be fully recovered from
@@ -200,31 +199,24 @@ These issues are in the code that produced the released checkpoint. The defaults
 reproduce them so that the released model can be re-trained exactly; where a fix
 exists, it is behind a flag.
 
-1. **The S2 Azure edge reward carries no signal**, because it averages to about 0.
-   - Cause: `AzureAsyncRewardEngine.score_batch` z-normalises each rollout's edge scores to mean 0 and spread 1, and `llm_edge_plausibility` then returns their mean. The mean of z-scores is 0 by construction.
-   - Effect: S2 GRPO for Observer-800 learned only from the format term and the more-than-10-edges penalty. The saved trainer logs show rewards clustered around ±0.1.
-   - Fix: `--edge-score-norm none` uses the raw [-1, 1] scores. GRPO already normalises advantages across the generations for each prompt.
-   - A judge or API failure also silently scores 0.0.
-2. **The GRPO chat template is broken.**
+1. **The GRPO chat template is broken.**
    - Cause: `ORIGINAL_GRPO_CHAT_TEMPLATE` references `system_prompt` and `reasoning_start`, which Hugging Face never passes when rendering.
    - Effect: the generation prompt is `"\nSYS<|im_end|>\n        USER\n\n"`, with stray whitespace and no `<think>`.
    - Fix: `--chat-template fixed` renders `SYS<|im_end|>USER<think>`; `native` keeps the Qwen3 template.
    - Related: the prompt format differs across stages. SFT uses `### System/### User/### Assistant`, GRPO uses the template above, and inference uses the Qwen3 native template.
-3. **The S1 SFT data is mis-paired.**
+2. **The S1 SFT data is mis-paired.**
    - Of the 5599 rows, 4579 put the *original* complaints in the user turn and, as the assistant turn, GPT-5's answer for the *augmented* complaints (`new_complaints`).
    - Fix: `build_data make-sft --stage s1 --pair-augmented` pairs each answer with the text it was generated from.
-4. **The S1 merge used a different base than training.** The S1 GRPO adapter was trained on `Qwen-3-8B-Patient-SFT` but merged onto `Qwen/Qwen3-8B`, which drops the S1 SFT weights. Pass `--base models/Qwen-3-8B-Patient-SFT` to merge onto the model the adapter was trained against.
-5. **SFT merges into a 4-bit base.**
+3. **The S1 merge used a different base than training.** The S1 GRPO adapter was trained on `Qwen-3-8B-Patient-SFT` but merged onto `Qwen/Qwen3-8B`, which drops the S1 SFT weights. Pass `--base models/Qwen-3-8B-Patient-SFT` to merge onto the model the adapter was trained against.
+4. **SFT merges into a 4-bit base.**
    - `sft.py` merges the LoRA into the bitsandbytes-nf4 model, as the original did, so `Qwen-3-8B-Patient-SFT(-S2)` are 4-bit checkpoints.
    - GRPO then trains on them, and Observer-800 is a bf16 export of that model.
    - Use `--save-adapter-only` and `merge.py` with a bf16 base to avoid this.
-6. **The local classifier reward is wrong under multi-GPU training.**
-   - Cause: only rank 0 scores its own completions, then broadcasts the rewards, so every other rank trains on rank 0's rewards. Fix: `--reward-per-rank`.
-   - It also prompts the classifier in a different format from the one it was trained on.
-7. **Edge-classifier SFT problems.**
+5. **The local classifier reward** prompts the classifier in a different format from the one it was trained on.
+6. **Edge-classifier SFT problems.**
    - The training text has no `### Assistant:` marker, so the loss covers the whole sequence; kept as is.
    - The original evaluation generated from the full text including the label. Here evaluation scores the Yes/No logit on the prompt only, which changes the reported metrics but not the model.
-8. **GRPO data repeats cases.** `grpo_training.jsonl` = the 510 case reports + 4579 augmented rows, but GRPO reads only `Complaints` and `gpt5_nodes`, and those are the *original* case's values in the augmented rows. So each case appears about 10 times.
+7. **GRPO data repeats cases.** `grpo_training.jsonl` = the 510 case reports + 4579 augmented rows, but GRPO reads only `Complaints` and `gpt5_nodes`, and those are the *original* case's values in the augmented rows. So each case appears about 10 times.
 
 ## Provenance
 

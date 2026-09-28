@@ -1,82 +1,60 @@
-"""Step 7 — merge adapters into a standalone Actor checkpoint.
+"""Merge a LoRA adapter into its base model and save a standalone checkpoint.
 
-Modes
------
-released (default)
-    Qwen3-8B + SFT adapter, saved in float16. This reproduces the released
-    ``qwen3-8b-dpo-merged`` bit-for-bit: its weights equal
-    fp16(W_base + SFT LoRA delta) with zero DPO component. The original merge
-    script loaded ``dpo_trl_final`` via ``load_adapter(..., "dpo")`` but
-    ``merge_and_unload()`` only merges the *active* adapter ("default" = SFT),
-    so DPO never entered the released weights.
-policy
-    Qwen3-8B + ``dpo_trl_final`` — the model the DPO run actually optimized
-    (its SFT layers were re-initialized, see train_dpo.py). The adapter's
-    doubly nested key names are remapped before loading.
-stacked
-    Qwen3-8B + SFT + DPO, for an adapter trained with ``train_dpo --init
-    stack-on-sft`` (``<dpo-adapter>/sft`` and ``<dpo-adapter>/dpo``).
+Used twice in the Actor pipeline (see README):
 
-    python -m model_training.actor.merge --mode released \
-        --sft-adapter models/Qwen-3-8B-Patient-SFT-Actor-5 \
+    # after SFT:  Qwen3-8B + SFT LoRA  ->  SFT Actor (the DPO starting point and reference)
+    python -m model_training.actor.merge \
+        --adapter models/Qwen-3-8B-Patient-SFT-Actor-5 \
+        --output models/qwen3-8b-sft-merged
+
+    # after DPO:  SFT Actor + DPO LoRA  ->  final Actor (SFT + DPO)
+    python -m model_training.actor.merge \
+        --base-model models/qwen3-8b-sft-merged \
+        --adapter models/qwen3-8b-dpo-lora \
         --output models/qwen3-8b-dpo-merged
+
+The script verifies that the adapter actually changed the weights, so a merge
+that silently drops an adapter fails loudly instead of producing a copy of the
+base model.
 """
 
 from __future__ import annotations
 
 import argparse
-import json
 import shutil
-import tempfile
 from pathlib import Path
 
 import torch
 from peft import PeftModel
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-from angel_common.paths import MODELS_DIR, resolve_model, resolve_path
-
-NESTED_PREFIX = "base_model.model.base_model.model."
-PLAIN_PREFIX = "base_model.model."
+from angel_common.paths import resolve_model, resolve_path
 
 
-def _unnest_adapter(adapter_dir: Path, tmp: Path) -> Path:
-    """Copy an adapter whose keys carry a doubly nested PeftModel prefix, flattened."""
-    from safetensors.torch import load_file, save_file
-
-    state = load_file(str(adapter_dir / "adapter_model.safetensors"))
-    fixed = {(PLAIN_PREFIX + k[len(NESTED_PREFIX):] if k.startswith(NESTED_PREFIX) else k): v
-             for k, v in state.items()}
-    save_file(fixed, str(tmp / "adapter_model.safetensors"))
-    cfg = json.loads((adapter_dir / "adapter_config.json").read_text())
-    cfg["base_model_name_or_path"] = cfg.get("base_model_name_or_path") or "Qwen/Qwen3-8B"
-    (tmp / "adapter_config.json").write_text(json.dumps(cfg, indent=2))
-    return tmp
+def _probe_weight(model) -> torch.Tensor:
+    """A LoRA-targeted weight (first layer q_proj) used to check the merge took effect."""
+    return model.get_submodule("model.layers.0.self_attn.q_proj").weight.detach().float().clone()
 
 
-def merge(mode: str, base: str, sft: Path, dpo: Path, out: Path, dtype: torch.dtype) -> None:
+def merge(base: str, adapter: Path, out: Path, dtype: torch.dtype) -> None:
     if out.exists():
         shutil.rmtree(out)
 
-    print("Loading base model...", base)
+    print("Loading base model:", base)
     model = AutoModelForCausalLM.from_pretrained(base, dtype=dtype, device_map="cpu", trust_remote_code=True)
+    before = _probe_weight(model)
 
-    with tempfile.TemporaryDirectory() as tmpdir:
-        if mode == "released":
-            model = PeftModel.from_pretrained(model, str(sft))
-            merged = model.merge_and_unload()
-        elif mode == "policy":
-            model = PeftModel.from_pretrained(model, str(_unnest_adapter(dpo, Path(tmpdir))))
-            merged = model.merge_and_unload()
-        elif mode == "stacked":
-            model = PeftModel.from_pretrained(model, str(dpo / "sft"), adapter_name="sft")
-            model.load_adapter(str(dpo / "dpo"), adapter_name="dpo")
-            merged = model.merge_and_unload(adapter_names=["sft", "dpo"])
-        else:
-            raise ValueError(mode)
+    print("Loading adapter:", adapter)
+    model = PeftModel.from_pretrained(model, str(adapter))
+    merged = model.merge_and_unload()
 
-        print("Saving merged model to", out)
-        merged.save_pretrained(out, safe_serialization=True)
+    delta = (_probe_weight(merged) - before).norm().item()
+    print(f"|ΔW| on layers.0.q_proj after merge: {delta:.6f}")
+    if delta == 0.0:
+        raise RuntimeError(f"Merging {adapter} did not change the weights; refusing to save {out}.")
+
+    print("Saving merged model to", out)
+    merged.save_pretrained(out, safe_serialization=True)
     AutoTokenizer.from_pretrained(base, trust_remote_code=True).save_pretrained(out)
 
     AutoModelForCausalLM.from_pretrained(out, dtype=dtype, device_map="cpu", trust_remote_code=True)
@@ -85,20 +63,16 @@ def merge(mode: str, base: str, sft: Path, dpo: Path, out: Path, dtype: torch.dt
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--mode", choices=["released", "policy", "stacked"], default="released")
-    ap.add_argument("--base-model", default=None, help="default: resolve_model('base') -> Qwen/Qwen3-8B")
-    ap.add_argument("--sft-adapter", default=str(MODELS_DIR / "Qwen-3-8B-Patient-SFT-Actor-5"))
-    ap.add_argument("--dpo-adapter", default=str(MODELS_DIR / "dpo_trl_final"))
-    ap.add_argument("--output", default=str(MODELS_DIR / "qwen3-8b-dpo-merged"))
-    ap.add_argument("--dtype", choices=["float16", "bfloat16"], default="float16",
-                    help="the released checkpoint is float16")
+    ap.add_argument("--base-model", default=None,
+                    help="model the adapter was trained on (default: resolve_model('base') -> Qwen/Qwen3-8B)")
+    ap.add_argument("--adapter", required=True, help="LoRA adapter directory")
+    ap.add_argument("--output", required=True, help="output directory for the merged checkpoint")
+    ap.add_argument("--dtype", choices=["bfloat16", "float16"], default="bfloat16")
     args = ap.parse_args()
 
     merge(
-        args.mode,
         resolve_model("base", args.base_model),
-        resolve_path(args.sft_adapter),
-        resolve_path(args.dpo_adapter),
+        resolve_path(args.adapter),
         Path(args.output),
         getattr(torch, args.dtype),
     )

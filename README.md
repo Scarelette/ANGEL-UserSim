@@ -5,7 +5,7 @@ Angel simulates a psychotherapy patient in two stages:
 1. **Observer** (`Qwen3-Observer-800`, Qwen3-8B trained with SFT + GRPO) reads
    a short patient description. It builds a symptom network and expands the
    description into a structured **long profile**.
-2. **Actor** (`qwen3-8b-dpo-merged`, Qwen3-8B fine-tuned for role-play)
+2. **Actor** (`qwen3-8b-dpo-merged`, Qwen3-8B trained with SFT + DPO)
    **role-plays the patient described by the Observer's long profile** across a
    multi-turn therapy conversation. It discloses sensitive material gradually.
 

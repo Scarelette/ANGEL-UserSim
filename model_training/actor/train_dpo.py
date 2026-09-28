@@ -1,23 +1,20 @@
-"""Step 6 — DPO on the judged pairs -> ``dpo_trl_final`` (LoRA adapter).
+"""DPO on the judged preference pairs, starting from the SFT Actor.
 
-Faithful port of ``actor/dpo/train_dpo_2.py`` @ 652db58, the exact commit
-recorded by the W&B run that produced ``models/dpo_trl_final`` (864 steps,
-2 epochs over 6,901 pairs, single H200, trl 0.27.1 / transformers 5.0.0 /
-peft 0.18.1). Hyperparameters: 4-bit nf4 base, new LoRA r=16 / alpha=32 /
-dropout=0.05, lr 2e-6 (linear), beta 0.1 (sigmoid loss), batch 2 x
-grad-accum 8, max_length 4096, max_prompt_length 2048, bf16, seed 42.
+Policy and reference are both the SFT Actor (Qwen3-8B with the SFT LoRA merged
+in, see ``merge.py``). A fresh LoRA is trained on top of it with DPO; the
+reference is the same model with that LoRA disabled, so the DPO KL anchor is
+exactly the SFT model. Merge the result into the SFT Actor to get the final
+SFT + DPO Actor.
+
+Hyperparameters (as in the paper): 4-bit nf4 base, LoRA r=16 / alpha=32 /
+dropout=0.05 on all attention and MLP projections, lr 2e-6 (linear), beta 0.1
+(sigmoid loss), batch 2 x grad-accum 8, 2 epochs, max_length 4096,
+max_prompt_length 2048, bf16, seed 42.
 
     python -m model_training.actor.train_dpo \
+        --sft-model models/qwen3-8b-sft-merged \
         --train-file data/actor/dpo/dpo_training.jsonl \
-        --output-dir models/dpo_trl_final
-
-IMPORTANT (see README "Known issues"): the original code wraps the SFT
-``PeftModel`` in a second ``get_peft_model`` with the same adapter name
-("default"), which re-initializes the LoRA layers in place — the SFT weights
-are overwritten and the policy starts from plain Qwen3-8B, while the
-reference model is base + SFT. This is the default (``--init released``) so
-the released adapter can be reproduced. ``--init stack-on-sft`` trains a
-separate "dpo" adapter on top of the frozen SFT adapter instead (untested).
+        --output-dir models/qwen3-8b-dpo-lora
 """
 
 from __future__ import annotations
@@ -29,12 +26,12 @@ from pathlib import Path
 import numpy as np
 import torch
 from datasets import load_dataset
-from peft import LoraConfig, PeftModel, get_peft_model
+from peft import LoraConfig
 from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig, TrainerCallback
 from trl import DPOConfig, DPOTrainer
 
 from angel_common.env import get_env
-from angel_common.paths import DATA_DIR, MODELS_DIR, OUTPUTS_DIR, resolve_model, resolve_path
+from angel_common.paths import DATA_DIR, MODELS_DIR, OUTPUTS_DIR, resolve_path
 
 SEED = 42
 DEVICE = "cuda"
@@ -80,10 +77,10 @@ class TrainingMonitorCallback(TrainerCallback):
 
 
 class KLMonitorCallback(TrainerCallback):
-    """Every 20 steps log a crude policy-vs-reference log-prob gap on one example."""
+    """Every 20 steps log a crude policy-vs-reference (SFT) log-prob gap on one example."""
 
-    def __init__(self, tokenizer, ref_model, dataset):
-        self.tokenizer, self.ref_model, self.dataset = tokenizer, ref_model, dataset
+    def __init__(self, tokenizer, dataset):
+        self.tokenizer, self.dataset = tokenizer, dataset
 
     def on_step_end(self, args, state, control, **kwargs):
         import wandb
@@ -95,41 +92,18 @@ class KLMonitorCallback(TrainerCallback):
                                 truncation=True, max_length=4096).to(model.device)
         with torch.no_grad():
             policy_lp = torch.nn.functional.log_softmax(model(**inputs).logits, dim=-1)
-            ref_lp = torch.nn.functional.log_softmax(self.ref_model(**inputs).logits, dim=-1)
+            with model.disable_adapter():  # reference = SFT Actor without the DPO LoRA
+                ref_lp = torch.nn.functional.log_softmax(model(**inputs).logits, dim=-1)
         wandb.log({"approx_kl": (policy_lp - ref_lp).mean().item()})
-
-
-def build_policy(base_model: str, sft_adapter: str, init: str):
-    base = AutoModelForCausalLM.from_pretrained(
-        base_model, quantization_config=_bnb_config(), torch_dtype=torch.bfloat16,
-        trust_remote_code=True, device_map=None,
-    ).to(DEVICE)
-
-    if init == "released":
-        policy = PeftModel.from_pretrained(base, sft_adapter)
-        for p in policy.parameters():
-            p.requires_grad = False
-        # Re-wrapping re-initializes the "default" LoRA layers (SFT weights lost).
-        policy = get_peft_model(policy, _dpo_lora())
-    else:  # stack-on-sft
-        policy = PeftModel.from_pretrained(base, sft_adapter, adapter_name="sft")
-        policy.add_adapter("dpo", _dpo_lora())
-        policy.base_model.set_adapter(["sft", "dpo"])
-        for name, p in policy.named_parameters():
-            p.requires_grad = ".dpo." in name
-    policy.print_trainable_parameters()
-    policy.config.use_cache = False
-    return policy
 
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--base-model", default=None, help="default: resolve_model('base') -> Qwen/Qwen3-8B")
-    ap.add_argument("--sft-adapter", default=str(MODELS_DIR / "Qwen-3-8B-Patient-SFT-Actor-5"))
+    ap.add_argument("--sft-model", default=str(MODELS_DIR / "qwen3-8b-sft-merged"),
+                    help="SFT Actor: Qwen3-8B with the SFT LoRA merged in (output of merge.py)")
     ap.add_argument("--train-file", default=str(DATA_DIR / "actor" / "dpo" / "dpo_training.jsonl"))
-    ap.add_argument("--output-dir", default=str(MODELS_DIR / "dpo_trl_final"), help="final adapter")
+    ap.add_argument("--output-dir", default=str(MODELS_DIR / "qwen3-8b-dpo-lora"), help="final DPO LoRA adapter")
     ap.add_argument("--checkpoint-dir", default=str(OUTPUTS_DIR / "actor_dpo"), help="Trainer output_dir")
-    ap.add_argument("--init", choices=["released", "stack-on-sft"], default="released")
     ap.add_argument("--report-to", default="wandb")
     ap.add_argument("--no-monitor", action="store_true", help="skip the extra grad-norm / KL W&B callbacks")
     args = ap.parse_args()
@@ -141,8 +115,7 @@ def main():
     torch.backends.cuda.matmul.allow_tf32 = True
     torch.backends.cudnn.benchmark = True
 
-    base_model = resolve_model("base", args.base_model)
-    sft_adapter = str(resolve_path(args.sft_adapter))
+    sft_model = str(resolve_path(args.sft_model))
 
     if args.report_to == "wandb":
         import wandb
@@ -150,23 +123,19 @@ def main():
             project=get_env("WANDB_PROJECT", "qwen-dpo-training"),
             name=get_env("WANDB_RUN_NAME", "qwen3-8b-actor-dpo"),
             config={"model": "Qwen3-8B", "lr": 2e-6, "beta": 0.1, "batch_size": 2, "grad_accum": 8,
-                    "epochs": 2, "max_length": 4096, "init": args.init},
+                    "epochs": 2, "max_length": 4096, "sft_model": sft_model},
         )
 
-    tokenizer = AutoTokenizer.from_pretrained(base_model, trust_remote_code=True, use_fast=False)
+    tokenizer = AutoTokenizer.from_pretrained(sft_model, trust_remote_code=True, use_fast=False)
     tokenizer.pad_token = tokenizer.eos_token
 
-    policy_model = build_policy(base_model, sft_adapter, args.init)
-
-    ref_base = AutoModelForCausalLM.from_pretrained(
-        base_model, quantization_config=_bnb_config(), torch_dtype=torch.bfloat16,
+    # Policy = SFT Actor + trainable DPO LoRA (added by DPOTrainer via peft_config).
+    # Reference = the same SFT Actor with the LoRA disabled (ref_model=None).
+    model = AutoModelForCausalLM.from_pretrained(
+        sft_model, quantization_config=_bnb_config(), torch_dtype=torch.bfloat16,
         trust_remote_code=True, device_map=None,
     ).to(DEVICE)
-    ref_model = PeftModel.from_pretrained(ref_base, sft_adapter)
-    ref_model.eval()
-    for p in ref_model.parameters():
-        p.requires_grad = False
-    ref_model.config.use_cache = False
+    model.config.use_cache = False
 
     def preprocess(example):
         prompt = tokenizer.apply_chat_template(example["context_messages"], tokenize=False, add_generation_prompt=True)
@@ -196,10 +165,18 @@ def main():
         seed=SEED,
     )
 
-    trainer = DPOTrainer(model=policy_model, ref_model=ref_model, args=dpo_config, train_dataset=dataset)
+    trainer = DPOTrainer(
+        model=model,
+        ref_model=None,
+        args=dpo_config,
+        train_dataset=dataset,
+        processing_class=tokenizer,
+        peft_config=_dpo_lora(),
+    )
+    trainer.model.print_trainable_parameters()
     if args.report_to == "wandb" and not args.no_monitor:
         trainer.add_callback(TrainingMonitorCallback())
-        trainer.add_callback(KLMonitorCallback(tokenizer, ref_model, dataset))
+        trainer.add_callback(KLMonitorCallback(tokenizer, dataset))
 
     trainer.train()
 

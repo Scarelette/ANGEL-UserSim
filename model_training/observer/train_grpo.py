@@ -52,13 +52,9 @@ def parse_args() -> argparse.Namespace:
     # S2 reward
     p.add_argument("--reward", choices=["azure", "local", "format_only"], default="azure",
                    help="S2 edge reward. Ignored for S1.")
-    p.add_argument("--edge-score-norm", choices=["group", "none"], default="group",
-                   help="azure reward: 'group' = original per-rollout z-norm (mean ~0); 'none' = raw scores.")
     p.add_argument("--judge-max-concurrent", type=int, default=3)
     p.add_argument("--edge-classifier-model", default=None,
                    help="local reward: Yes/No classifier (default: resolve_model('edge_classifier')).")
-    p.add_argument("--reward-per-rank", action="store_true",
-                   help="local reward: score completions on every rank (fix) instead of rank-0 broadcast (original).")
     p.add_argument("--edge-dump", default=None, help="format_only reward: append proposed edges to this JSONL.")
     args = p.parse_args()
 
@@ -87,7 +83,6 @@ def build_reward(args, match_regex):
             deployment_name=edge_judge_deployment(),
             max_concurrent=args.judge_max_concurrent,
             max_retries=5,
-            edge_score_norm=args.edge_score_norm,
         )
         return rewards.symptom_graph_reward_s2_azure(match_regex, engine)
 
@@ -107,7 +102,7 @@ def build_reward(args, match_regex):
         rmodel.eval()
         for param in rmodel.parameters():
             param.requires_grad_(False)
-        return rewards.symptom_graph_reward_s2_local(match_regex, rmodel, rtok, per_rank=args.reward_per_rank)
+        return rewards.symptom_graph_reward_s2_local(match_regex, rmodel, rtok)
 
     return rewards.symptom_graph_reward_s2_format_only(match_regex, edge_dump_path=args.edge_dump)
 
