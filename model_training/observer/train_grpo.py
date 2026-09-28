@@ -53,6 +53,10 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--reward", choices=["azure", "local", "format_only"], default="azure",
                    help="S2 edge reward. Ignored for S1.")
     p.add_argument("--judge-max-concurrent", type=int, default=3)
+    p.add_argument("--w-format", type=float, default=0.1, help="azure reward: weight of the format term")
+    p.add_argument("--w-precision", type=float, default=0.6, help="azure reward: weight of mean edge plausibility")
+    p.add_argument("--w-coverage", type=float, default=0.3, help="azure reward: weight of node coverage")
+    p.add_argument("--max-edges", type=int, default=10, help="azure reward: edges beyond this are penalised")
     p.add_argument("--edge-classifier-model", default=None,
                    help="local reward: Yes/No classifier (default: resolve_model('edge_classifier')).")
     p.add_argument("--edge-dump", default=None, help="format_only reward: append proposed edges to this JSONL.")
@@ -84,7 +88,11 @@ def build_reward(args, match_regex):
             max_concurrent=args.judge_max_concurrent,
             max_retries=5,
         )
-        return rewards.symptom_graph_reward_s2_azure(match_regex, engine)
+        cfg = rewards.EdgeRewardConfig(
+            w_format=args.w_format, w_precision=args.w_precision,
+            w_coverage=args.w_coverage, max_edges=args.max_edges,
+        )
+        return rewards.symptom_graph_reward_s2_azure(match_regex, engine, cfg)
 
     if args.reward == "local":
         import torch

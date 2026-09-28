@@ -2,8 +2,12 @@
 
 S1 (nodes):  0.4 * format + 0.6 * node semantic recall vs. GPT-5 reference nodes.
 S2 (edges):  one of three edge rewards
-  - ``azure``       : 0.2 * format + 0.8 * LLM-judge edge plausibility − 0.2 if > 10 edges
-                      (the paper's S2 reward; plausibility = mean judge score mapped to [-1, 1])
+  - ``azure``       : LLM-judge edge reward (see ``EdgeRewardConfig``):
+                        w_format * format + w_precision * precision + w_coverage * coverage
+                        − soft size penalty
+                      precision = mean judge plausibility of the proposed edges in [-1, 1]
+                      (edges that break the rules score -1 without a judge call);
+                      coverage  = share of listed nodes joined by a supported edge, in [-1, 1]
   - ``local``       : 0.3 * format + 0.5 * local Qwen3-0.6B Yes/No classifier score
   - ``format_only`` : 0.3 * format (clipped to [-0.5, 0.5]); optionally dumps every
                       proposed edge to JSONL — used to harvest edges for the
@@ -20,7 +24,8 @@ import asyncio
 import hashlib
 import json
 import os
-from typing import Any, Callable, Dict, List, Optional
+from dataclasses import dataclass
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import numpy as np
 
@@ -210,38 +215,144 @@ Symptom Relationships:
         return np.array([2 * min(max(reward_dict.get(i, 0.5), 0.0), 1.0) - 1 for i in range(len(edges))])
 
 
-def llm_edge_plausibility(complaints: str, edges: List[Dict[str, str]], reward_engine: AzureAsyncRewardEngine) -> float:
-    if not edges:
-        return -1.0
-    try:
-        edge_strs = [f"{e['from']} -> {e['to']}" for e in edges]
-        scores = asyncio.run(reward_engine.score_batch(complaints, edge_strs))
-        return float(scores.mean())
-    except Exception as e:
-        print("Reward error:", e)
-        return 0.0
+@dataclass
+class EdgeRewardConfig:
+    """Weights of the S2 edge reward. Defaults sum to 1 so the reward stays in about [-1, 1]."""
+
+    w_format: float = 0.1       # format reward is 0.5 when valid -> contributes 0.05
+    w_precision: float = 0.6    # mean plausibility of proposed edges
+    w_coverage: float = 0.3     # listed nodes connected by a supported edge
+    support_threshold: float = 0.5   # judge score >= this counts as a supported edge
+    max_edges: int = 10              # edges beyond this are penalised ...
+    penalty_per_extra_edge: float = 0.05
+    max_size_penalty: float = 0.3    # ... up to this much
 
 
-def symptom_graph_reward_s2_azure(match_regex, reward_engine: AzureAsyncRewardEngine) -> Callable:
-    def reward_fn(prompts, completions, complaints, **kwargs):
+def _norm_node(name: str) -> str:
+    return " ".join(str(name).lower().split())
+
+
+def _edge_key(complaints: str, src: str, dst: str) -> str:
+    return hashlib.sha256(f"{complaints}\x1f{_norm_node(src)}\x1f{_norm_node(dst)}".encode("utf-8")).hexdigest()
+
+
+class EdgeJudge:
+    """Scores edges 0..1 with the Azure judge, caching per (complaints, edge).
+
+    The cache makes an edge proposed by several generations of the same prompt
+    receive the same score, so GRPO's within-group comparison reflects the
+    graphs rather than judge sampling noise, and avoids repeated API calls.
+    """
+
+    def __init__(self, engine: "AzureAsyncRewardEngine", max_cache: int = 200_000):
+        self.engine = engine
+        self.cache: Dict[str, float] = {}
+        self.max_cache = max_cache
+
+    def score(self, complaints: str, edges: List[Tuple[str, str]]) -> List[Optional[float]]:
+        """0..1 score per edge, or None if the judge call failed."""
+        keys = [_edge_key(complaints, a, b) for a, b in edges]
+        todo = sorted({k: e for k, e in zip(keys, edges) if k not in self.cache}.items())
+        if todo:
+            try:
+                raw = asyncio.run(self.engine.score_batch(complaints, [f"{a} -> {b}" for _, (a, b) in todo]))
+                if len(self.cache) > self.max_cache:
+                    self.cache.clear()
+                for (k, _), r in zip(todo, raw):
+                    self.cache[k] = (float(r) + 1.0) / 2.0  # [-1, 1] -> 0..1
+            except Exception as e:
+                print("Edge judge error:", e)
+        return [self.cache.get(k) for k in keys]
+
+
+def score_edge_graph(
+    complaints: str,
+    edges: List[Dict[str, Any]],
+    nodes: Optional[List[str]],
+    judge: EdgeJudge,
+    cfg: EdgeRewardConfig,
+) -> Dict[str, float]:
+    """Precision / coverage / size penalty for one proposed network.
+
+    Edges that break the task rules get plausibility -1 without a judge call:
+    an endpoint not in the provided node list, a self-loop, or a duplicate.
+    Returns None-free floats; if the judge fails, judged edges count as
+    uncertain (0.5) so an API outage does not look like a bad graph.
+    """
+    node_set = {_norm_node(n) for n in nodes} if nodes else None
+    seen = set()
+    per_edge: List[Optional[float]] = []  # None = to be judged
+    to_judge: List[Tuple[str, str]] = []
+    for e in edges:
+        a, b = str(e.get("from", "")), str(e.get("to", ""))
+        na, nb = _norm_node(a), _norm_node(b)
+        invalid = (
+            not na or not nb or na == nb or (na, nb) in seen
+            or (node_set is not None and (na not in node_set or nb not in node_set))
+        )
+        seen.add((na, nb))
+        if invalid:
+            per_edge.append(-1.0)
+        else:
+            per_edge.append(None)
+            to_judge.append((a, b))
+
+    judged = iter(judge.score(complaints, to_judge)) if to_judge else iter(())
+    plaus: List[float] = []
+    supported_nodes = set()
+    edge_iter = iter(edges)
+    for val in per_edge:
+        e = next(edge_iter)
+        if val is not None:
+            plaus.append(val)
+            continue
+        s01 = next(judged)
+        s01 = 0.5 if s01 is None else s01
+        plaus.append(2.0 * s01 - 1.0)
+        if s01 >= cfg.support_threshold:
+            supported_nodes.update({_norm_node(e["from"]), _norm_node(e["to"])})
+
+    precision = float(np.mean(plaus)) if plaus else -1.0
+    if node_set:
+        coverage = 2.0 * len(supported_nodes & node_set) / len(node_set) - 1.0
+    else:
+        coverage = 0.0
+    extra = max(0, len(edges) - cfg.max_edges)
+    size_penalty = min(cfg.max_size_penalty, cfg.penalty_per_extra_edge * extra)
+    return {"precision": precision, "coverage": coverage, "size_penalty": size_penalty}
+
+
+def symptom_graph_reward_s2_azure(
+    match_regex,
+    reward_engine: "AzureAsyncRewardEngine",
+    config: Optional[EdgeRewardConfig] = None,
+) -> Callable:
+    cfg = config or EdgeRewardConfig()
+    judge = EdgeJudge(reward_engine)
+
+    def reward_fn(prompts, completions, complaints, nodes=None, **kwargs):
+        node_lists = nodes if nodes is not None else [None] * len(completions)
         rewards = []
-        for completion, complaint in zip(completions, complaints):
+        for completion, complaint, node_list in zip(completions, complaints, node_lists):
             json_str = _match_json(match_regex, completion[0]["content"])
             if json_str is None:
-                rewards.append(-1.0)
-                continue
-            try:
-                edges = json.loads(json_str).get("links", [])
-            except Exception:
                 rewards.append(-1.0)
                 continue
             r_format = format_reward_s2(json_str)
             if r_format < 0:
                 rewards.append(r_format)
                 continue
-            r_edges = llm_edge_plausibility(complaint, edges, reward_engine)
-            size_penalty = -0.2 if len(edges) > 10 else 0.0
-            rewards.append(0.2 * r_format + 0.8 * r_edges + size_penalty)
+            edges = json.loads(json_str)["links"]
+            if not edges:
+                rewards.append(-1.0)
+                continue
+            parts = score_edge_graph(complaint, edges, node_list, judge, cfg)
+            rewards.append(
+                cfg.w_format * r_format
+                + cfg.w_precision * parts["precision"]
+                + cfg.w_coverage * parts["coverage"]
+                - parts["size_penalty"]
+            )
         return np.array(rewards, dtype=np.float32).tolist()
 
     return reward_fn

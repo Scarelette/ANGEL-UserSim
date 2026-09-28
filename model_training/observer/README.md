@@ -123,7 +123,23 @@ done
 ```
 
 Settings:
-- Reward: `0.2·format + 0.8·edge_plausibility − 0.2·[#edges > 10]`. The judge (`ANGEL_EDGE_JUDGE_DEPLOYMENT`, gpt-5-mini, up to 3 concurrent requests) scores every proposed edge 0–1; `edge_plausibility` is the mean score mapped to [-1, 1]. GRPO normalises the final reward across the generations of each prompt, so edge scores are not normalised again inside a rollout.
+- Reward: `0.1·format + 0.6·precision + 0.3·coverage − size_penalty` (weights: `--w-format`, `--w-precision`, `--w-coverage`).
+  - **precision**: mean plausibility of the proposed edges in [-1, 1]. The judge (`ANGEL_EDGE_JUDGE_DEPLOYMENT`, gpt-5-mini, up to 3 concurrent requests) scores each edge 0–1. Edges that break the task rules score -1 without a judge call: an endpoint missing from the provided node list, a self-loop, or a duplicate.
+  - **coverage**: share of the listed nodes joined by at least one supported edge (judge score ≥ 0.5), mapped to [-1, 1]. Without it, a graph with one safe edge scores as well as the full network.
+  - **size_penalty**: 0.05 per edge beyond `--max-edges` (10), capped at 0.3.
+  - Judge scores are cached per (complaints, edge), so the same edge gets the same score in every generation of a prompt and GRPO's group comparison reflects the graphs, not judge noise. A failed judge call counts the edge as uncertain (0.5).
+  - GRPO normalises the final reward across each prompt's generations, so edge scores are not normalised again inside a rollout.
+
+  On a fixed test case the reward orders graphs as intended:
+
+  | proposed graph | reward |
+  |---|---|
+  | all 8 correct edges | 0.89 |
+  | 3 correct edges | 0.59 |
+  | 1 correct edge | 0.44 |
+  | 8 correct + 4 implausible | 0.47 |
+  | 5 correct + 3 with invented/self-loop nodes | 0.39 |
+  | 16 edges, 8 correct | 0.10 |
 - Training: lr 1e-5; 4 generations per prompt; LoRA r=32, α=64.
 
 The surviving adapters (`…-set2-{400,600,700,800}-gpt`) and W&B runs show 100-step

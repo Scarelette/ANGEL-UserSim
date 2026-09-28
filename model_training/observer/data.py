@@ -65,6 +65,7 @@ def load_grpo_dataset(data_path: str, stage: str, limit: Optional[int] = None):
                     {"role": "user", "content": build_input_s2(x["Complaints"], _as_list(x["gpt5_nodes"]))},
                 ],
                 "complaints": x["Complaints"],
+                "nodes": _as_list(x["gpt5_nodes"]),  # the edge reward checks endpoints against this list
             }
     else:
         raise ValueError(f"stage must be 's1' or 's2', got {stage!r}")
