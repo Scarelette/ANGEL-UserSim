@@ -274,7 +274,7 @@ Below is your clinical background and case profile:
                 prompts.append({"role": "assistant", "content": content})
             elif role in {"user", "assistant"}:
                 prompts.append({"role": role, "content": content})
-            # system 直接忽略：避免污染
+            # system messages are dropped so they do not leak into the roleplay prompt
         return prompts
 
     # @staticmethod

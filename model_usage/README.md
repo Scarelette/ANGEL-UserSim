@@ -122,6 +122,7 @@ its own copy of the evaluation actor.
 | `ANGEL_OBSERVER_MODEL` | `models/Qwen3-Observer-800` | stage-1 weights (path or Hub id) |
 | `ANGEL_ACTOR_MODEL` | `models/qwen3-8b-dpo-merged` | stage-2 weights (path or Hub id) |
 | `ANGEL_BACKEND` | `auto` | `auto` / `vllm` / `hf` / `stub` |
+| `ANGEL_DEMO_BACKEND` | `vllm` | engine used by `scripts/gpu_demo.py` |
 | `ANGEL_PROMPT_STYLE` | `patient_demo` | `patient_demo` / `angel_eval` |
 | `ANGEL_JSONL_PATH` | `model_usage/examples/profiles.jsonl` | profiles for `--profile-id` |
 | `ANGEL_KEEP_BOTH` | `0` | keep the Observer loaded after expansion |

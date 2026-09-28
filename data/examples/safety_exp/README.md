@@ -8,4 +8,4 @@ from the paper's data and describes no real person.
   and `query_models` parse. The assistant side escalates mildly, as the real
   source does over 58 turns.
 - `example_partial_context.txt` — first turn only; a stand-in for PARTIAL context.
-- `example_profile_ids.txt` — profile-id list for `scripts/run_redteam.sh`.
+- `example_profile_ids.txt` — profile-id list for `experiments/safety_exp/scripts/run_redteam.sh`.
