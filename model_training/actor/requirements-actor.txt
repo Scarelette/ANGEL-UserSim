@@ -1,0 +1,16 @@
+# Versions recorded by the W&B run that trained the released DPO adapter
+# (Python 3.10). The SFT adapter was trained with PEFT 0.18.1 in the same env.
+torch==2.10.0
+transformers==5.0.0
+peft==0.18.1
+trl==0.27.1
+datasets==4.5.0
+bitsandbytes==0.49.1
+accelerate==1.12.0
+safetensors==0.7.0
+numpy==2.2.6
+wandb==0.24.0
+# API clients for data generation
+openai==2.16.0
+anthropic==0.83.0
+python-dotenv

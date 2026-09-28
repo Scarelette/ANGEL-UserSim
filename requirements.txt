@@ -1,0 +1,8 @@
+# Minimal install for model_usage. Each module has its own requirements file:
+#   model_usage/requirements-usage.txt
+#   model_training/observer/requirements-observer.txt
+#   model_training/actor/requirements-actor.txt
+#   experiments/profile_expansion/requirements-profile-expansion.txt
+#   experiments/safety_exp/requirements-safety.txt
+-r model_usage/requirements-usage.txt
+python-dotenv>=1.0

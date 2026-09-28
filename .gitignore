@@ -1,0 +1,33 @@
+# Credentials — never commit
+.env
+.env.*
+!.env.example
+*.pem
+*service-account*.json
+*credentials*.json
+cookies.pkl
+
+# Model weights and training outputs
+models/*
+!models/README.md
+outputs/
+checkpoints/
+wandb/
+*.safetensors
+*.bin
+*.pt
+
+# Logs and caches
+logs/
+*.log
+*.out
+*.err
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+.cache/
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/

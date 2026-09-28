@@ -1,0 +1,6 @@
+# model_usage — the package is pure stdlib; the stub backend and tests need nothing.
+# To run the real checkpoints, install one inference engine:
+vllm>=0.8            # default engine (--backend vllm / auto); brings its own torch
+torch>=2.1           # transformers fallback (--backend hf)
+transformers>=4.51   # Qwen3 support
+accelerate>=0.30

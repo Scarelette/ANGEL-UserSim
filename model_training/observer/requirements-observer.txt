@@ -1,0 +1,21 @@
+# Observer training + evaluation. Versions are those of the environment the
+# released Qwen3-Observer-800 was trained in (Python 3.10, CUDA GPUs).
+torch==2.10.0
+transformers==5.0.0
+trl==0.27.1
+peft==0.18.1
+bitsandbytes==0.49.1
+accelerate==1.12.0
+datasets==4.5.0
+sentence-transformers==5.2.2
+numpy==2.2.6
+scikit-learn==1.7.2
+jsonlines==4.0.0
+tqdm
+matplotlib==3.10.8
+wandb==0.24.0
+# API clients (data generation, GRPO judge, evaluation baselines)
+openai==2.16.0
+anthropic==0.83.0
+google-genai==2.7.0
+python-dotenv
