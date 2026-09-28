@@ -68,7 +68,7 @@ python -m experiments.profile_expansion.run_agenda_experiment \
 
 ## Reproducing the paper
 
-### 1. Generate transcripts (all figures)
+### 1. Generate transcripts
 
 25 runs per profile per model; `--resume` skips finished (profile, run) pairs.
 
@@ -105,7 +105,7 @@ profile. Note that the default `--metrics` omits `profile_alignment` and
 `min_distance_diversity`, so pass the list explicitly. Judge outputs are cached
 per record in `<input>.record_cache.json`, so re-runs are cheap.
 
-The overall and stage-level figures read one combined file per model at *k*=4:
+The main results use one combined file per model at *k*=4:
 
 ```bash
 python -m experiments.profile_expansion.combine_metrics \
@@ -113,34 +113,29 @@ python -m experiments.profile_expansion.combine_metrics \
   --output outputs/profile_expansion/results/clean/${M}_agenda_runs5.metrics.combined.run4.json
 ```
 
-(The `runs5` in the file name is kept because the figure scripts glob it; in
-the paper the 4-run metrics came from the first five runs, computed in a
-separate alignment pass and diversity pass — `combine_metrics` accepts several
-`--inputs` for that case.)
+(The `runs5` in the file name is kept from the paper's runs; there the 4-run
+metrics came from the first five runs, computed in a separate alignment pass and
+diversity pass — `combine_metrics` accepts several `--inputs` for that case.)
 
-`scripts/evaluate_and_plot.sh` runs steps 2–3 for all four models.
+`scripts/evaluate.sh` runs steps 2–3 for all four models.
 
-### 3. Paper figures
+### 3. Main results table
 
 ```bash
-python -m experiments.profile_expansion.figures.plot_paper_figures --print-stats
+python -m experiments.profile_expansion.report_main_results \
+  --json outputs/profile_expansion/main_results.json
 ```
 
-| Output (`outputs/profile_expansion/figures/`) | Paper figure | Script |
-|---|---|---|
-| `overall_model_performance.pdf` | Overall model performance | `figures.plot_paper_figures` |
-| `stage_aspect_performance.pdf` | Stage- and aspect-level performance | `figures.plot_paper_figures` |
-| `diversity_by_runs.pdf` | Diversity vs. number of runs | `figures.plot_paper_figures` |
-| `diversity_by_fixed_attributes.pdf` | Diversity vs. fixed attributes | `figures.plot_paper_figures` (needs step 4) |
-| `metric_analysis.pdf`, `run_count_sensitivity.pdf` | Metric construct validity | `figures.plot_metric_analysis` (needs steps 4–5) |
-| `stage_aspect_summary.pdf` / `stage_aspect_performance_point.pdf` | Stage/aspect variants | `figures.plot_stage_aspect_paper` / `figures.plot_stage_aspect_points` |
-| `profile_exp_summary.pdf` | Summary panel | `figures.plot_profile_exp_summary` |
-| `stage_profile_discrimination.pdf`, `conversation_profile_structure.pdf` | Appendix | `figures.plot_metric_appendix` (needs step 5) |
+Prints Simulation Diversity, Behavior Diversity and Profile Alignment per model
+(mean over profiles, 95% bootstrap CI with 10k resamples, seed 42). On the
+paper's metric files it reproduces the reported numbers exactly:
 
-`results/figure_stats.txt` holds the paper's numbers (means and 95% bootstrap
-CIs) and `results/figure_snippets.tex` the LaTeX figure blocks. Running
-`plot_paper_figures --print-stats` on the paper's metric files reproduces
-`figure_stats.txt` exactly.
+| Model | Simulation Diversity | Behavior Diversity | Profile Alignment |
+|---|---|---|---|
+| Eeyore | 0.1259 [0.1029, 0.1497] | 0.9417 [0.9267, 0.9560] | 0.9184 [0.9075, 0.9284] |
+| **Angel** | **0.3924** [0.3821, 0.4034] | **0.9729** [0.9619, 0.9816] | 0.9411 [0.9280, 0.9527] |
+| Patient-psi | 0.3230 [0.3159, 0.3301] | 0.9243 [0.9129, 0.9359] | 0.9716 [0.9502, 0.9880] |
+| Roleplay-doh | 0.3386 [0.3315, 0.3457] | 0.9370 [0.9248, 0.9490] | 0.9938 [0.9871, 0.9982] |
 
 ### 4. Fixed-attribute experiment
 
@@ -161,31 +156,11 @@ python -m experiments.profile_expansion.fixed_attributes.export_variant_inputs
 MODELS="angel eeyore patient_psi roleplay_doh" sbatch experiments/profile_expansion/scripts/fixattr_runs.sbatch
 # (e) diversity metrics per variant (k = 4 runs)
 bash experiments/profile_expansion/fixed_attributes/eval_fixattr_variant_diversity.sh 4
-# (f) per-metric plots (Figure 4 itself comes from plot_paper_figures)
-python -m experiments.profile_expansion.fixed_attributes.plot_fixed_attr_diversity_four_metrics
 ```
 
 `fixed_attributes.extract_fixed_attributes` writes the per-profile attribute
 inventory (`..._v3.fixed_attributes.jsonl`) on its own; the variant generator
 performs the same extraction internally.
-
-### 5. Metric validity and correlation (appendix)
-
-Run on the Patient-Psi 25-run transcripts by default (`--input` to change):
-
-```bash
-python -m experiments.profile_expansion.metric_validity.plot_validity_compact_combined \
-  --dump-scores outputs/profile_expansion/metric_validity/final/score_validity_samples.json \
-  --dump-stages outputs/profile_expansion/metric_validity/final/stage_validity_means.json
-python -m experiments.profile_expansion.metric_validity.validate_scores_combined
-python -m experiments.profile_expansion.metric_validity.plot_heatmap_four_metrics
-python -m experiments.profile_expansion.metric_validity.plot_clusters_four_metrics
-python -m experiments.profile_expansion.metric_correlation.analyze_metric_correlation
-```
-
-Each script's `--help` lists its options; `validate_diversity_metrics`,
-`validate_metric_scores`, `plot_conversation_clusters` and
-`plot_per_topic_bars_four_metrics` are the single-metric versions.
 
 ## Layout
 
@@ -199,13 +174,11 @@ patients/                    Angel Actor, Eeyore, Patient-Psi, Roleplay-doh, pro
 azure_clients.py             per-role Azure clients and deployment names
 evaluate_metrics*.py         metric runner (checkpoints, record cache, run sweeps)
 metrics/                     profile_alignment, semantic/min/kNN diversity, behavior_diversity
-combine_metrics.py           merge metric sections into the files the figures read
+combine_metrics.py           merge metric sections into one file per model
+report_main_results.py       main results table (means + 95% bootstrap CIs)
 run_fixattr_variant_experiment.py, fixed_attributes/   fixed-attribute experiment
-metric_validity/, metric_correlation/                  appendix analyses
-figures/                     paper figures
 layout.py                    default input/output locations
 scripts/                     Slurm / shell drivers (no credentials)
-results/                     paper numbers (aggregates only) and LaTeX figure snippets
 ```
 
 ## Provenance
@@ -220,21 +193,18 @@ limited to imports, paths, credentials, and the items under *Known issues*.
 | `profile_expansion/metrics/{common,profile_alignment,semantic_diversity,semantic_diversity_knn,semantic_diversity_min,behavior_diversity}.py` | `metrics/` |
 | `evaluation/{angel,ai_patient,patient_profile,state_manager,patient_psi,roleplay_doh,eeyore}.py`, `actor/sys_prompt.py` | `patients/` |
 | `GRPO-Qwen3/GRPO/short2long_profile_generation.py` (local-generation parts) | `stage1_short2long.py` |
-| `profile_expansion/{extract_fixed_attributes,generate_masked_profile_variants}.py`, `unit_test/fix_attr/{merge_existing_plus_runs.py,eval_fixattr_variant_diversity.sh,plot_fixed_attr_diversity_four_metrics.py}` | `fixed_attributes/` |
-| `unit_test/metric_validity/*.py`, `unit_test/metric_correlation/*.py` | `metric_validity/`, `metric_correlation/` |
-| `results/fig/{acl_fig_style,plot_paper_figures,plot_metric_analysis,plot_metric_appendix,plot_stage_aspect_paper,plot_stage_aspect_points}.py`, `results/fig/summary/{paper_style,plot_profile_exp_summary}.py` | `figures/` |
+| `profile_expansion/{extract_fixed_attributes,generate_masked_profile_variants}.py`, `unit_test/fix_attr/{merge_existing_plus_runs.py,eval_fixattr_variant_diversity.sh}` | `fixed_attributes/` |
+| `results/fig/plot_paper_figures.py` (the `--print-stats` numbers only) | `report_main_results.py` |
 | `output_generator.getOutput` | `angel_common.llm.get_output` |
 | `run.slurm`, `run_fixattr_*.slurm`, `run_patient_psi_array.slurm` | `scripts/` (credentials removed) |
 | — (done by hand) | `combine_metrics.py`, `fixed_attributes/export_variant_inputs.py`, `layout.py`, `azure_clients.py` |
 
-Not ported: `results_old/`, `metrics/semantic_diversity_v0.py`,
+Not included: the metric-validity and metric-correlation analyses
+(`unit_test/metric_validity/`, `unit_test/metric_correlation/`), all figure
+scripts (`results/fig/`), `results_old/`, `metrics/semantic_diversity_v0.py`,
 `recompute_metrics_firstk_changed_only.py`,
 `compute_adjusted_topic_scores_rglobal.py`,
-`evaluate_semantic_diversity_informative.py`, `plot_run_metrics_dot_ci.py`,
-superseded figure scripts (`plot_topic_model_*`, `plot_points_acl.py`,
-`plot_aspect_alignment_acl.py`, `run_number/`, `summary/plot_run*`,
-`unit_test_attribute/`), and `unit_test/complex_stage/` (its inputs came from the
-superseded `results_old/` pipeline).
+`evaluate_semantic_diversity_informative.py`, and `unit_test/complex_stage/`.
 
 ## Known issues
 
@@ -261,9 +231,5 @@ superseded `results_old/` pipeline).
   parses fall through to a retry and a repair pass, then a minimal profile. Kept
   as run.
 - `patients/angel.py` prints each system prompt (`sys_P:`) to stdout.
-- Removed from the port: an optional plotting mode in
-  `plot_fixed_attr_diversity_four_metrics.py` / `plot_metric_analysis.py` that
-  multiplied fixed-attribute scores by a synthetic downward drift. The paper's
-  Figure 4 plots measured values and does not use it.
 - The Angel stage-1 → stage-2 schema adapter (`angel_initializer._adapt_stage1_profile_to_angel`)
   discards the Observer's free-text `simulation_rules`; kept as run.

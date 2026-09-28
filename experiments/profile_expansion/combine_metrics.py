@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Merge metric sections from several ``evaluate_metrics`` outputs into one file.
 
-The paper figures read one JSON per model with every metric section present
+The main results (``report_main_results``) read one JSON per model with every metric section present
 (``results/clean/<model>_agenda_runs5.metrics.combined.run<N>.json``). In the
 original runs, profile alignment and the four diversity metrics were computed
 in separate ``evaluate_metrics`` passes over the same transcripts; this script

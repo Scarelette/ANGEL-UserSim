@@ -4,6 +4,5 @@ openai>=1.40           # Azure OpenAI (gpt-4o, gpt-5.2) and OpenRouter (grok)
 google-genai>=1.0      # Gemini on Vertex AI (only for gemini-* model keys)
 requests>=2.31         # --patient-backend http
 python-dotenv>=1.0     # optional: load <repo>/.env
-matplotlib>=3.8        # figures/
 numpy>=1.26            # figures/
 # --patient-backend angel additionally needs model_usage/requirements-usage.txt (torch, transformers, ...)

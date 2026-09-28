@@ -20,8 +20,8 @@ short profile ──► Observer ──► long profile ──► Actor ──�
 | [`model_usage/`](model_usage/) | Run Angel: short profile → Observer → long profile → Actor. CLI and Python API, no API keys needed. **Start here.** |
 | [`model_training/observer/`](model_training/observer/) | Observer training: data building, SFT, GRPO for stage 1 (symptom nodes) and stage 2 (edges), reward models, the edge classifier, merging, and automatic profile evaluation. |
 | [`model_training/actor/`](model_training/actor/) | Actor training: masking symptom networks, SFT and DPO rollouts against an LLM therapist, SFT, DPO, merging. |
-| [`experiments/profile_expansion/`](experiments/profile_expansion/) | Main paper experiment. Angel vs. Patient-Psi, Roleplay-doh, Eeyore and a one-stage ablation under a fixed intake agenda. Metrics: simulation diversity, behavior diversity, profile alignment, fixed attributes, metric validity. Also the paper figures. |
-| [`experiments/safety_exp/`](experiments/safety_exp/) | Safety experiment. Red-team contexts, queries to commercial LLMs, codebook-based LLM judging, figures. |
+| [`experiments/profile_expansion/`](experiments/profile_expansion/) | Main paper experiment. Angel vs. Patient-Psi, Roleplay-doh, Eeyore and a one-stage ablation under a fixed intake agenda. Metrics: simulation diversity, behavior diversity, profile alignment; the fixed-attribute experiment; the main results table. |
+| [`experiments/safety_exp/`](experiments/safety_exp/) | Safety experiment. Red-team contexts, queries to commercial LLMs, codebook-based LLM judging, main results (mean risk / safety per model). |
 | `angel_common/` | Shared code: repo-relative paths, model resolution, environment-based credentials, LLM clients. |
 | `data/examples/` | Small **synthetic** examples of every input format. No real patient data. |
 | `scripts/check_secrets.py` | Pre-publish scan for keys, tokens and machine-specific paths. |

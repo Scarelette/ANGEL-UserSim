@@ -20,7 +20,7 @@ source transcript ─► 1. generate_redteam_transcript ─► contexts/<mode>/p
                    ─► 3. codebook_llm_judge ─► codebook_judge_{results,long}_full_<mode>_profile<id>.{jsonl,csv}
                         Claude judge, Codebook.txt, temperature 0
                    ─► 4. generate_auto_attack_codebook_report ─► <model>/summary/<mode>_codebook_report.md
-                   ─► 5. figures/*  ─► risk/safety CIs, per-model metrics, highest-risk prompts, case excerpts
+                   ─► 5. summarize_results ─► mean Risk / Safety per model with 95% CI
 ```
 
 There are two context modes:
@@ -123,16 +123,25 @@ python -m experiments.safety_exp.generate_auto_attack_codebook_report \
     outputs/safety_exp/results/auto_attack/gpt4o outputs/safety_exp/results/auto_attack/gemini-3-pro
 ```
 
-**5. Figures** (defaults read `outputs/safety_exp/results/...` and write `outputs/safety_exp/fig/...`):
+**5. Main results.** Mean Risk and Safety per model with 95% CIs (1.96 × SE over judged responses):
 
-| Paper figure | Command |
-|---|---|
-| Fig. 1: risk/safety means with 95% CI | `python -m experiments.safety_exp.figures.plot_auto_attack_risk_safety_ci --mode auto_attack` (and `--mode reframe`), then `…figures.combine_auto_reframe_dot_ci` / `…combine_auto_reframe_bar_ci`; publication version `…figures.plot_ai_psycho_summary` |
-| Fig. 2: per-model overall metrics | `…figures.plot_auto_attack_overall_metrics_ci`, `…figures.combine_auto_reframe_per_model_overall_ci` |
-| Fig. 3: highest-risk prompts | `…figures.plot_auto_attack_highest_risk_prompts_ci`, `…figures.combine_auto_reframe_highest_risk_prompts_ci` |
-| Fig. 4/5: prompt/response case excerpts | `…figures.generate_sycophancy_top3_figure`, `…figures.generate_sycophancy_pair_figures`, `…figures.generate_sycophancy_excerpt_figure`, `…figures.regen_final_cases` (see known issue 3) |
+```bash
+python -m experiments.safety_exp.summarize_results --mode auto_attack
+python -m experiments.safety_exp.summarize_results --mode reframe
+```
 
-Each figure script supports `--help`.
+On the paper's judge outputs:
+
+| Model | auto_attack Risk | auto_attack Safety | reframe Risk | reframe Safety |
+|---|---|---|---|---|
+| claude-4.5-opus | 0.028 ± 0.008 | 2.877 ± 0.021 | 0.385 ± 0.029 | 2.349 ± 0.050 |
+| gemini-3-pro | 0.516 ± 0.056 | 1.803 ± 0.071 | 0.548 ± 0.050 | 1.928 ± 0.064 |
+| gpt4o | 1.237 ± 0.054 | 0.443 ± 0.042 | 1.352 ± 0.056 | 0.419 ± 0.040 |
+
+The per-model markdown reports from step 4 carry the full codebook breakdown
+(sycophancy, validation, reality testing, …). For reframe / gpt4o the paper's
+figure used the report's rounded mean (Risk 1.357, Safety 0.421), which was
+computed from a slightly different set of rows than the CSVs above.
 
 ## Data
 
@@ -155,17 +164,16 @@ This module ships **code, the codebook, the judge prompt, and a synthetic exampl
 | `safety_exp/codebook_judge_core.py` | `codebook_judge_core.py` | Only the path defaults changed. |
 | `safety_exp/generate_auto_attack_codebook_report.py` | same name | Unchanged. |
 | `safety_exp/Codebook.txt`, `prompts/codebook_judge_prompt.txt` | same | Verbatim. |
-| `safety_exp/fig/fig{1,2,3,4_auto_attack}/*.py`, `fig1/final/plot_ai_psycho_summary.py` | `figures/*.py` | Default paths `simulate_patient/safety_exp/{results,fig}` became `outputs/safety_exp/{results,fig}`. `regen_final_cases.py` got `--summary`/`--out-dir` and a package import instead of `sys.path`. |
+| `safety_exp/fig/fig1/plot_auto_attack_risk_safety_ci.py` (numbers only; figure scripts not included) | `summarize_results.py` | Same means and CI formula, printed instead of plotted. |
 | `run.sh`, `run2.sh` … `run6.sh` | `scripts/run_redteam.sh` | One parameterized loop (profile-id list or file, optional username column). |
 | query + judge loop (commented block in a Slurm script) | `scripts/run_query_and_judge.sh` | Same commands and file naming, plus the report step. |
 
 ## Known issues
 
-1. **Model column is empty for Claude and Gemini rows** in the judge CSV. `codebook_judge_core.MODEL_ID_RULES` does not match `claude-opus-4-5` or `gemini-3.1-pro-preview`; only GPT-4o gets an id. The paper's outputs have the same gap. The figure scripts group by result directory, so the figures are unaffected. Left as-is for fidelity.
-2. **Legacy file names.** The paper's `reframe/gpt4o` run files are named `run_all_full_profile<id>.jsonl` (no mode). The report script only globs `run_all_full_<mode>_profile*.jsonl`, so that directory's report finds no response text; the figure scripts accept both names. The driver scripts here always write the mode.
-3. **Fig. 4/5 case figures need a file no script here produces.** They read `<mode>_codebook_pattern_top{3,6}_risky_pairs_presentation.jsonl` (and fig3 variants read `highest_risk_by_prompt*`). The script that wrote these was not in the source repo. `regen_final_cases.py` also hardcodes curated quotes that must match the paper's responses verbatim.
-4. **Model labels vs. ids.** `gemini-3-pro` actually calls `gemini-3.1-pro-preview`. `gpt 5.2 chat` falls back to a deployment named `gpt-5` unless `AZURE_OPENAI_DEPLOYMENT_GPT_5_2_CHAT` is set, so set it to reproduce GPT-5.2.
-5. **Patient service parity.** The paper's replays used the study app's HTTP patient service over its 42-profile set. It is unknown whether that service ran Observer expansion on those profiles. The in-process backend defaults to Actor-only (`--patient-expand` off) and uses whatever profiles file you give it, so use the same profiles to compare against the paper.
-6. **`query_models` appends to `--output-jsonl`.** Re-running a context duplicates records, and the judge treats them as new (its resume key is file + line index). Delete the file before a rerun.
-7. **`--api-key` on the judge CLI** is kept for compatibility. Prefer `ANTHROPIC_API_KEY`, because command-line keys end up in shell history and process lists.
-8. The generated context JSON records `anthropic_base_url` in its `config` block. Strip it before sharing outputs if your endpoint name is private.
+1. **Model column is empty for Claude and Gemini rows** in the judge CSV. `codebook_judge_core.MODEL_ID_RULES` does not match `claude-opus-4-5` or `gemini-3.1-pro-preview`; only GPT-4o gets an id. The paper's outputs have the same gap. `summarize_results` groups by result directory, so the main results are unaffected. Left as-is for fidelity.
+2. **Legacy file names.** The paper's `reframe/gpt4o` run files are named `run_all_full_profile<id>.jsonl` (no mode). The report script only globs `run_all_full_<mode>_profile*.jsonl`, so that directory's report finds no response text (`summarize_results` accepts both names). The driver scripts here always write the mode.
+3. **Model labels vs. ids.** `gemini-3-pro` actually calls `gemini-3.1-pro-preview`. `gpt 5.2 chat` falls back to a deployment named `gpt-5` unless `AZURE_OPENAI_DEPLOYMENT_GPT_5_2_CHAT` is set, so set it to reproduce GPT-5.2.
+4. **Patient service parity.** The paper's replays used the study app's HTTP patient service over its 42-profile set. It is unknown whether that service ran Observer expansion on those profiles. The in-process backend defaults to Actor-only (`--patient-expand` off) and uses whatever profiles file you give it, so use the same profiles to compare against the paper.
+5. **`query_models` appends to `--output-jsonl`.** Re-running a context duplicates records, and the judge treats them as new (its resume key is file + line index). Delete the file before a rerun.
+6. **`--api-key` on the judge CLI** is kept for compatibility. Prefer `ANTHROPIC_API_KEY`, because command-line keys end up in shell history and process lists.
+7. The generated context JSON records `anthropic_base_url` in its `config` block. Strip it before sharing outputs if your endpoint name is private.
