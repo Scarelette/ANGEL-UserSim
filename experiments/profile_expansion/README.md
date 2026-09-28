@@ -51,8 +51,7 @@ Angel and Eeyore each need one GPU (~16 GB bf16 per 8B model; Angel loads both
 stages, ~32 GB). The API-backed models need no GPU.
 
 **Inputs.** `data/profile_expansion/selected_50_short_patient_profiles_v2.jsonl`
-(main experiment, 50 profiles) and `..._v3.jsonl` (fixed-attribute experiment,
-45 profiles). These were derived from published case reports and are not
+(50 profiles). These were derived from published case reports and are not
 included; `data/examples/profile_expansion/short_profiles.example.jsonl` has two
 synthetic rows with the same schema. Outputs go to
 `outputs/profile_expansion/` (override with `ANGEL_OUTPUT_DIR`).
@@ -137,31 +136,6 @@ paper's metric files it reproduces the reported numbers exactly:
 | Patient-psi | 0.3230 [0.3159, 0.3301] | 0.9243 [0.9129, 0.9359] | 0.9716 [0.9502, 0.9880] |
 | Roleplay-doh | 0.3386 [0.3315, 0.3457] | 0.9370 [0.9248, 0.9490] | 0.9938 [0.9871, 0.9982] |
 
-### 4. Fixed-attribute experiment
-
-Tests whether diversity falls as more profile attributes are held fixed.
-
-```bash
-# (a) variants: for k = 1..N fixed attributes, Claude rewrites each profile keeping only k
-python -m experiments.profile_expansion.fixed_attributes.generate_masked_profile_variants \
-  --samples-per-count 3 --profile-workers 2 --workers 6 --resume
-# (b) first run: one transcript per (profile, k) for up to 10 profiles with >= 22 attributes
-for M in angel eeyore patient_psi roleplay_doh; do
-  python -m experiments.profile_expansion.run_fixattr_variant_experiment \
-    --model $M --output outputs/profile_expansion/fixed_attributes/fixattr_variant_${M}.jsonl --resume
-done
-# (c) the union of variants used in (b) -> input for the extra runs
-python -m experiments.profile_expansion.fixed_attributes.export_variant_inputs
-# (d) 3 more runs per variant, merged into fixattr_variant_<model>_runs4.jsonl
-MODELS="angel eeyore patient_psi roleplay_doh" sbatch experiments/profile_expansion/scripts/fixattr_runs.sbatch
-# (e) diversity metrics per variant (k = 4 runs)
-bash experiments/profile_expansion/fixed_attributes/eval_fixattr_variant_diversity.sh 4
-```
-
-`fixed_attributes.extract_fixed_attributes` writes the per-profile attribute
-inventory (`..._v3.fixed_attributes.jsonl`) on its own; the variant generator
-performs the same extraction internally.
-
 ## Layout
 
 ```
@@ -176,7 +150,6 @@ evaluate_metrics*.py         metric runner (checkpoints, record cache, run sweep
 metrics/                     profile_alignment, semantic/min/kNN diversity, behavior_diversity
 combine_metrics.py           merge metric sections into one file per model
 report_main_results.py       main results table (means + 95% bootstrap CIs)
-run_fixattr_variant_experiment.py, fixed_attributes/   fixed-attribute experiment
 layout.py                    default input/output locations
 scripts/                     Slurm / shell drivers (no credentials)
 ```
@@ -189,17 +162,18 @@ limited to imports, paths, credentials, and the items under *Known issues*.
 
 | Original | Here |
 |---|---|
-| `profile_expansion/{run_agenda_experiment,interview_process,patient_models,angel_initializer,run_fixattr_variant_experiment,evaluate_metrics*}.py` | same names |
+| `profile_expansion/{run_agenda_experiment,interview_process,patient_models,angel_initializer,evaluate_metrics*}.py` | same names |
 | `profile_expansion/metrics/{common,profile_alignment,semantic_diversity,semantic_diversity_knn,semantic_diversity_min,behavior_diversity}.py` | `metrics/` |
 | `evaluation/{angel,ai_patient,patient_profile,state_manager,patient_psi,roleplay_doh,eeyore}.py`, `actor/sys_prompt.py` | `patients/` |
 | `GRPO-Qwen3/GRPO/short2long_profile_generation.py` (local-generation parts) | `stage1_short2long.py` |
-| `profile_expansion/{extract_fixed_attributes,generate_masked_profile_variants}.py`, `unit_test/fix_attr/{merge_existing_plus_runs.py,eval_fixattr_variant_diversity.sh}` | `fixed_attributes/` |
 | `results/fig/plot_paper_figures.py` (the `--print-stats` numbers only) | `report_main_results.py` |
 | `output_generator.getOutput` | `angel_common.llm.get_output` |
-| `run.slurm`, `run_fixattr_*.slurm`, `run_patient_psi_array.slurm` | `scripts/` (credentials removed) |
-| — (done by hand) | `combine_metrics.py`, `fixed_attributes/export_variant_inputs.py`, `layout.py`, `azure_clients.py` |
+| `run.slurm`, `run_patient_psi_array.slurm` | `scripts/` (credentials removed) |
+| — (done by hand) | `combine_metrics.py`, `layout.py`, `azure_clients.py` |
 
-Not included: the metric-validity and metric-correlation analyses
+Not included: the fixed-attribute experiment (`extract_fixed_attributes.py`,
+`generate_masked_profile_variants.py`, `run_fixattr_variant_experiment.py`,
+`unit_test/fix_attr/`), the metric-validity and metric-correlation analyses
 (`unit_test/metric_validity/`, `unit_test/metric_correlation/`), all figure
 scripts (`results/fig/`), `results_old/`, `metrics/semantic_diversity_v0.py`,
 `recompute_metrics_firstk_changed_only.py`,

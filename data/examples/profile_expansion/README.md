@@ -14,5 +14,4 @@ paper's input file `selected_50_short_patient_profiles_v2.jsonl`:
 
 The paper's 50 profiles were derived from published clinical case reports and
 are not redistributed here. To run the full experiment, place your own file at
-`data/profile_expansion/selected_50_short_patient_profiles_v2.jsonl` (and the
-45-row `..._v3.jsonl` for the fixed-attribute experiment) or pass `--input`.
+`data/profile_expansion/selected_50_short_patient_profiles_v2.jsonl` or pass `--input`.

@@ -7,13 +7,11 @@ automatically when `python-dotenv` is installed). Nothing is hardcoded.
 
 | Variable | Required for | Notes |
 |---|---|---|
-| `AZURE_OPENAI_ENDPOINT` | GPT-5 judges (profile alignment, behavior extraction, fixed-attribute extraction); fallback for every role below | `https://<resource>.openai.azure.com/` |
+| `AZURE_OPENAI_ENDPOINT` | GPT-5 judges (profile alignment, behavior extraction); fallback for every role below | `https://<resource>.openai.azure.com/` |
 | `AZURE_OPENAI_API_KEY` | same | |
 | `AZURE_OPENAI_API_VERSION` | optional | default `2024-12-01-preview` |
 | `ANGEL_THERAPIST_AZURE_ENDPOINT` / `_API_KEY` / `_API_VERSION` | optional | separate resource for the agenda therapist; falls back to `AZURE_OPENAI_*` |
 | `ANGEL_BASELINE_AZURE_ENDPOINT` / `_API_KEY` / `_API_VERSION` | optional | separate resource for the Patient-Psi and Roleplay-doh baselines; falls back to `AZURE_OPENAI_*` |
-| `ANTHROPIC_API_KEY` | `fixed_attributes/generate_masked_profile_variants` | |
-| `ANTHROPIC_BASE_URL` | optional | set to an Azure AI Foundry `.../anthropic/` endpoint to use Foundry; unset = api.anthropic.com |
 | `HF_TOKEN` | optional | only if a Hugging Face model you load is gated (read by `transformers` directly) |
 
 In the paper setup the therapist and baselines ran on one Azure resource and the

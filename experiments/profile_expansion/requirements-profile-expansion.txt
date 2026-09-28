@@ -6,7 +6,6 @@ accelerate>=1.0       # device_map="auto" for the local patient models
 peft>=0.13            # only for HFCausalLMPatient with --adapter-path
 bitsandbytes>=0.43    # only for 4-bit loading
 openai>=1.40          # Azure OpenAI: therapist, Patient-Psi, Roleplay-doh, GPT-5 judges
-anthropic>=0.60       # fixed-attribute variant generation (Claude)
 sentence-transformers>=3.0   # all-MiniLM-L6-v2 embeddings for the diversity metrics
 numpy>=1.26
 scipy>=1.11

@@ -9,10 +9,7 @@ from angel_common.paths import DATA_DIR, OUTPUTS_DIR
 
 INPUT_DIR = DATA_DIR / "profile_expansion"
 SHORT_PROFILES = INPUT_DIR / "selected_50_short_patient_profiles_v2.jsonl"
-SHORT_PROFILES_V3 = INPUT_DIR / "selected_50_short_patient_profiles_v3.jsonl"
 
 OUT_DIR = OUTPUTS_DIR / "profile_expansion"
 RESULTS_DIR = OUT_DIR / "results"            # agenda transcripts + metric JSONs
 CLEAN_DIR = RESULTS_DIR / "clean"            # combined metric JSONs (main results)
-FIXATTR_DIR = OUT_DIR / "fixed_attributes"   # fixed-attribute variants, transcripts, metrics
-FIXATTR_PROFILES_DIR = FIXATTR_DIR / "profiles"
