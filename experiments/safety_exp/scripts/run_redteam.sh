@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build red-team replay contexts for a list of patient profiles.
+# Build auto_attack red-team replay contexts for a list of patient profiles.
 # Replaces the original run.sh ... run6.sh, which differed only in profile ids.
 #
 # Usage (from the repository root):
@@ -10,25 +10,17 @@
 #                separated list such as "1,16,28". Default: 0..41.
 #
 # Environment knobs:
-#   MODE        auto_attack (default) | reframe   ("reframe" = --assistant-mode attack_style)
 #   INPUT       source transcript (default data/safety_exp/full_context.txt)
-#   OUT_DIR     output directory      (default outputs/safety_exp/contexts/$MODE)
+#   OUT_DIR     output directory      (default outputs/safety_exp/contexts/auto_attack)
 #   PYTHON      interpreter            (default python3)
 #
 # Anything after "--" is passed to generate_redteam_transcript, e.g.
 #   bash experiments/safety_exp/scripts/run_redteam.sh 1,16 -- --patient-backend angel --max-turns 5
 set -euo pipefail
 
-MODE="${MODE:-auto_attack}"
 INPUT="${INPUT:-data/safety_exp/full_context.txt}"
-OUT_DIR="${OUT_DIR:-outputs/safety_exp/contexts/${MODE}}"
+OUT_DIR="${OUT_DIR:-outputs/safety_exp/contexts/auto_attack}"
 PYTHON="${PYTHON:-python3}"
-
-case "$MODE" in
-  auto_attack) ASSISTANT_MODE=auto_attack ;;
-  reframe)     ASSISTANT_MODE=attack_style ;;
-  *) echo "MODE must be auto_attack or reframe, got: $MODE" >&2; exit 2 ;;
-esac
 
 IDS_ARG="${1:-}"
 [[ $# -gt 0 ]] && shift
@@ -52,9 +44,8 @@ for line in "${LINES[@]}"; do
   read -r pid user <<<"$line"
   user_args=()
   [[ -n "${user:-}" ]] && user_args=(--username "$user")
-  echo "[run_redteam] mode=$MODE profile=$pid"
+  echo "[run_redteam] profile=$pid"
   "$PYTHON" -m experiments.safety_exp.generate_redteam_transcript \
-    --assistant-mode "$ASSISTANT_MODE" \
     --input "$INPUT" \
     --profile-id "$pid" \
     --output-prefix "$OUT_DIR/profile_${pid}" \

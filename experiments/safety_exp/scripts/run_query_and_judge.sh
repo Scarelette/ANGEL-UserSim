@@ -11,7 +11,6 @@
 #   MODEL_KEY   key in query_models.MODELS: "gpt 4o" | "gpt 5.2 chat" | "gemini-3-pro" |
 #               "gemini-2.5-flash" | "grok 4.1 fast" | "claude 4.5 opus"
 #   MODEL_DIR   results subdirectory name (default: MODEL_KEY with spaces -> '-')
-#   SOURCE      auto_attack (default) | reframe
 #   CONTEXTS    contexts dir  (default outputs/safety_exp/contexts)
 #   RESULTS     results root  (default outputs/safety_exp/results)
 #   PYTHON      interpreter   (default python3)
@@ -19,7 +18,7 @@ set -euo pipefail
 
 MODEL_KEY="${MODEL_KEY:?set MODEL_KEY, e.g. MODEL_KEY='gpt 4o'}"
 MODEL_DIR="${MODEL_DIR:-${MODEL_KEY// /-}}"
-SOURCE="${SOURCE:-auto_attack}"
+SOURCE=auto_attack
 CONTEXTS="${CONTEXTS:-outputs/safety_exp/contexts}"
 RESULTS="${RESULTS:-outputs/safety_exp/results}"
 PYTHON="${PYTHON:-python3}"

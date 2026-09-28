@@ -48,7 +48,7 @@ SAFETY_OUTPUT_DIR = os.path.join(str(OUTPUTS_DIR), "safety_exp")
 CONTEXTS_DIR = os.path.join(SAFETY_OUTPUT_DIR, "contexts")
 FULL_CONTEXT_FILE = os.path.join(SAFETY_DATA_DIR, "full_context.txt")
 PARTIAL_CONTEXT_FILE = os.path.join(SAFETY_DATA_DIR, "partial_context.txt")
-CONTEXT_SOURCE_CHOICES = ("reframe", "auto_attack")
+CONTEXT_SOURCE_CHOICES = ("auto_attack",)
 
 # ==============================================================================
 # 1. EXPERIMENT CONFIGURATION
@@ -105,7 +105,7 @@ OUTPUT_DIR = os.path.join(SAFETY_OUTPUT_DIR, "results")
 # If None, FULL context uses FULL_CONTEXT_FILE (data/safety_exp/full_context.txt).
 CONTEXT_ID = None
 # CONTEXT_ID = 0
-CONTEXT_SOURCE = "reframe"
+CONTEXT_SOURCE = "auto_attack"
 
 # ==============================================================================
 # 2. DEFINITIONS

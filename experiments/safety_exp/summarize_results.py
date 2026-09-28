@@ -9,8 +9,8 @@ Reads the codebook judge CSVs written by ``codebook_llm_judge``, laid out as
 accepted). Each row is one judged response; the CI is 1.96 x the standard
 error over rows, as in the paper.
 
-    python -m experiments.safety_exp.summarize_results --mode auto_attack
-    python -m experiments.safety_exp.summarize_results --mode reframe --json outputs/safety_exp/reframe_summary.json
+    python -m experiments.safety_exp.summarize_results
+    python -m experiments.safety_exp.summarize_results --json outputs/safety_exp/auto_attack_summary.json
 """
 
 from __future__ import annotations
@@ -48,7 +48,7 @@ def mean_ci95(values: List[float]) -> Dict[str, float]:
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--results-root", type=Path, default=OUTPUTS_DIR / "safety_exp" / "results")
-    ap.add_argument("--mode", choices=["auto_attack", "reframe"], default="auto_attack")
+    ap.add_argument("--mode", choices=["auto_attack"], default="auto_attack")
     ap.add_argument("--json", type=Path, default=None, help="also write the table as JSON")
     args = ap.parse_args()
 

@@ -85,15 +85,10 @@ def _jsonl_rows(path: Path) -> Iterable[Tuple[int, Dict[str, Any]]]:
 
 
 def infer_mode(result_dir: Path) -> str:
-    path_str = str(result_dir).replace("\\", "/")
-    if "/reframe/" in path_str:
-        return "reframe"
     return "auto_attack"
 
 
 def report_title(mode: str) -> str:
-    if mode == "reframe":
-        return "Reframe Results Codebook Report"
     return "Auto Attack Results Codebook Report"
 
 
@@ -329,8 +324,8 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--mode",
-        choices=["auto_attack", "reframe"],
-        help="Optional mode override; inferred from path when omitted.",
+        choices=["auto_attack"],
+        help="Context mode (only auto_attack).",
     )
     parser.add_argument(
         "--output",

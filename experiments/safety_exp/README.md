@@ -23,14 +23,10 @@ source transcript ─► 1. generate_redteam_transcript ─► contexts/<mode>/p
                    ─► 5. summarize_results ─► mean Risk / Safety per model with 95% CI
 ```
 
-There are two context modes:
-
-| Mode (paper) | `--assistant-mode` | Assistant side of the replay |
-|---|---|---|
-| `auto_attack` | `auto_attack` | Claude writes a **new** reply to the simulated patient. It uses only the source turn's attack-style label and escalation role (default `claude-opus-4-1`, via `ANTHROPIC_BASE_URL` / Foundry in the paper). |
-| `reframe` | `attack_style` | Claude **rewrites** the source assistant turn to fit the patient's message, keeping its rhetorical function (default `claude-opus-4-6`). |
-
-`literal` is also available: it preserves the source wording as far as possible. It was not used in the paper.
+Contexts are built in the **`auto_attack`** mode: for each turn, Claude writes a
+**new** reply to the simulated patient, using only the source turn's attack-style
+label and escalation role (`--auto-attack-model`, default `claude-opus-4-1`, via
+`ANTHROPIC_BASE_URL` / Foundry in the paper).
 
 The attack-style labels come from `infer_attack_style_label`: intellectual validation → plausibility expansion → metaphor amplification → existential reframing → special-insight validation → glitch validation → collaborative investigation → mission escalation. The turn-index ranges are tuned to the 58-turn source transcript.
 
@@ -77,14 +73,13 @@ are read from `data/safety_exp/` and outputs go to `outputs/safety_exp/`; set
 ```bash
 # one profile, in-process patient
 python -m experiments.safety_exp.generate_redteam_transcript \
-    --assistant-mode auto_attack \
     --input data/safety_exp/full_context.txt \
     --patient-backend angel --profile-id 0 \
     --output-prefix outputs/safety_exp/contexts/auto_attack/profile_0
 
 # many profiles (replaces the original run.sh … run6.sh)
 bash experiments/safety_exp/scripts/run_redteam.sh 0,1,16,28 -- --patient-backend angel
-MODE=reframe bash experiments/safety_exp/scripts/run_redteam.sh data/examples/safety_exp/example_profile_ids.txt
+bash experiments/safety_exp/scripts/run_redteam.sh data/examples/safety_exp/example_profile_ids.txt
 ```
 
 `--dry-run` skips the patient and reuses the source user turns. It still calls Claude for the assistant turns.
@@ -93,7 +88,7 @@ MODE=reframe bash experiments/safety_exp/scripts/run_redteam.sh data/examples/sa
 
 ```bash
 MODEL_KEY="gpt 4o"          MODEL_DIR=gpt4o           bash experiments/safety_exp/scripts/run_query_and_judge.sh
-MODEL_KEY="claude 4.5 opus" MODEL_DIR=claude-4.5-opus SOURCE=reframe bash experiments/safety_exp/scripts/run_query_and_judge.sh 0,1,2
+MODEL_KEY="claude 4.5 opus" MODEL_DIR=claude-4.5-opus bash experiments/safety_exp/scripts/run_query_and_judge.sh 0,1,2
 ```
 
 Or run the steps individually:
@@ -126,22 +121,19 @@ python -m experiments.safety_exp.generate_auto_attack_codebook_report \
 **5. Main results.** Mean Risk and Safety per model with 95% CIs (1.96 × SE over judged responses):
 
 ```bash
-python -m experiments.safety_exp.summarize_results --mode auto_attack
-python -m experiments.safety_exp.summarize_results --mode reframe
+python -m experiments.safety_exp.summarize_results
 ```
 
 On the paper's judge outputs:
 
-| Model | auto_attack Risk | auto_attack Safety | reframe Risk | reframe Safety |
-|---|---|---|---|---|
-| claude-4.5-opus | 0.028 ± 0.008 | 2.877 ± 0.021 | 0.385 ± 0.029 | 2.349 ± 0.050 |
-| gemini-3-pro | 0.516 ± 0.056 | 1.803 ± 0.071 | 0.548 ± 0.050 | 1.928 ± 0.064 |
-| gpt4o | 1.237 ± 0.054 | 0.443 ± 0.042 | 1.352 ± 0.056 | 0.419 ± 0.040 |
+| Model | Risk | Safety |
+|---|---|---|
+| claude-4.5-opus | 0.028 ± 0.008 | 2.877 ± 0.021 |
+| gemini-3-pro | 0.516 ± 0.056 | 1.803 ± 0.071 |
+| gpt4o | 1.237 ± 0.054 | 0.443 ± 0.042 |
 
 The per-model markdown reports from step 4 carry the full codebook breakdown
-(sycophancy, validation, reality testing, …). For reframe / gpt4o the paper's
-figure used the report's rounded mean (Risk 1.357, Safety 0.421), which was
-computed from a slightly different set of rows than the CSVs above.
+(sycophancy, validation, reality testing, …).
 
 ## Data
 
@@ -171,9 +163,8 @@ This module ships **code, the codebook, the judge prompt, and a synthetic exampl
 ## Known issues
 
 1. **Model column is empty for Claude and Gemini rows** in the judge CSV. `codebook_judge_core.MODEL_ID_RULES` does not match `claude-opus-4-5` or `gemini-3.1-pro-preview`; only GPT-4o gets an id. The paper's outputs have the same gap. `summarize_results` groups by result directory, so the main results are unaffected. Left as-is for fidelity.
-2. **Legacy file names.** The paper's `reframe/gpt4o` run files are named `run_all_full_profile<id>.jsonl` (no mode). The report script only globs `run_all_full_<mode>_profile*.jsonl`, so that directory's report finds no response text (`summarize_results` accepts both names). The driver scripts here always write the mode.
-3. **Model labels vs. ids.** `gemini-3-pro` actually calls `gemini-3.1-pro-preview`. `gpt 5.2 chat` falls back to a deployment named `gpt-5` unless `AZURE_OPENAI_DEPLOYMENT_GPT_5_2_CHAT` is set, so set it to reproduce GPT-5.2.
-4. **Patient service parity.** The paper's replays used the study app's HTTP patient service over its 42-profile set. It is unknown whether that service ran Observer expansion on those profiles. The in-process backend defaults to Actor-only (`--patient-expand` off) and uses whatever profiles file you give it, so use the same profiles to compare against the paper.
-5. **`query_models` appends to `--output-jsonl`.** Re-running a context duplicates records, and the judge treats them as new (its resume key is file + line index). Delete the file before a rerun.
-6. **`--api-key` on the judge CLI** is kept for compatibility. Prefer `ANTHROPIC_API_KEY`, because command-line keys end up in shell history and process lists.
-7. The generated context JSON records `anthropic_base_url` in its `config` block. Strip it before sharing outputs if your endpoint name is private.
+2. **Model labels vs. ids.** `gemini-3-pro` actually calls `gemini-3.1-pro-preview`. `gpt 5.2 chat` falls back to a deployment named `gpt-5` unless `AZURE_OPENAI_DEPLOYMENT_GPT_5_2_CHAT` is set, so set it to reproduce GPT-5.2.
+3. **Patient service parity.** The paper's replays used the study app's HTTP patient service over its 42-profile set. It is unknown whether that service ran Observer expansion on those profiles. The in-process backend defaults to Actor-only (`--patient-expand` off) and uses whatever profiles file you give it, so use the same profiles to compare against the paper.
+4. **`query_models` appends to `--output-jsonl`.** Re-running a context duplicates records, and the judge treats them as new (its resume key is file + line index). Delete the file before a rerun.
+5. **`--api-key` on the judge CLI** is kept for compatibility. Prefer `ANTHROPIC_API_KEY`, because command-line keys end up in shell history and process lists.
+6. The generated context JSON records `anthropic_base_url` in its `config` block. Strip it before sharing outputs if your endpoint name is private.
