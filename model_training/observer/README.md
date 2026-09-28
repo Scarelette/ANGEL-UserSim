@@ -194,8 +194,6 @@ python -m model_training.observer.eval.auto_profile_eval_pipeline \
     --stage1-models models/Qwen3-Observer-800 --generations-per-model 12 \
     --generation-gpus 0,1,2,3 --network-gpus 0,1,2,3 --run-name ours
 # baselines: --stage1-models gpt-5 | claude-opus-4-5 | gemini-2.5-flash | Qwen/Qwen3-8B
-python -m model_training.observer.eval.plot_reasonability_diversity_summary
-python -m model_training.observer.eval.plot_diversity_by_k
 ```
 
 The pipeline writes `outputs/observer/auto_eval_runs/<run>/report.{md,json}`.
@@ -248,7 +246,7 @@ exists, it is behind a flag.
 | `GRPO-Qwen3/classifier/classifier_generator.py` | `edge_classifier_api.py` |
 | `GRPO-Qwen3/classifier/fine_tune.py`, `classifier/test.py` | `edge_classifier_data.py` |
 | `GRPO-Qwen3/Finetune/finetune_classifier.py` | `train_edge_classifier.py` |
-| `GRPO-Qwen3/GRPO/{auto_profile_eval_pipeline, short2long_profile_generation, merge_long_profiles, score_network_edges, diversity_metrics, plot_diversity_by_k, plot_reasonability_diversity_summary}.py` | `eval/` (same names) |
+| `GRPO-Qwen3/GRPO/{auto_profile_eval_pipeline, short2long_profile_generation, merge_long_profiles, score_network_edges, diversity_metrics}.py` | `eval/` (same names; plot scripts not included) |
 
 Not ported:
 - **Math-tutorial leftovers:** the Qwen3-0.6B math GRPO tutorial (`train.py`, `model_init.py`, `dataset_math_reward.py`, root `merge.py`).

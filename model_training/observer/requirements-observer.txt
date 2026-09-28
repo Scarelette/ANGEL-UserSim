@@ -12,7 +12,6 @@ numpy==2.2.6
 scikit-learn==1.7.2
 jsonlines==4.0.0
 tqdm
-matplotlib==3.10.8
 wandb==0.24.0
 # API clients (data generation, GRPO judge, evaluation baselines)
 openai==2.16.0
