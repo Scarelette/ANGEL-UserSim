@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Evaluate profile-expansion outputs with all implemented metrics."""
+"""Evaluate profile-expansion transcripts: profile alignment, behavior diversity, simulation diversity."""
 
 from __future__ import annotations
 
@@ -15,15 +15,11 @@ PACKAGE_ROOT = REPO_ROOT  # repository root; run scripts with `python -m` from h
 from experiments.profile_expansion.evaluate_metrics_core import (
     build_behavior_section,
     build_profile_alignment_section,
-    build_semantic_section,
     compute_records_signature,
     evaluate,
     load_resume_state,
     read_jsonl,
     write_json,
-)
-from experiments.profile_expansion.metrics.semantic_diversity_knn import (
-    score_group_diversity,
 )
 from experiments.profile_expansion.evaluate_metrics_record_cache import (
     load_record_cache,
@@ -39,10 +35,8 @@ from experiments.profile_expansion.evaluate_metrics_runs import (
 
 SUPPORTED_METRICS = (
     "profile_alignment",
-    "semantic_diversity",
     "behavior_diversity",
-    "group_diversity",
-    "min_distance_diversity",
+    "simulation_diversity",
 )
 
 
@@ -164,11 +158,10 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--metrics",
-        default="semantic_diversity,behavior_diversity,group_diversity",
+        default=",".join(SUPPORTED_METRICS),
         help=(
             "Comma-separated metrics to compute. "
-            "Supported: profile_alignment,semantic_diversity,behavior_diversity,group_diversity. "
-            "Default: semantic_diversity,behavior_diversity,group_diversity."
+            "Supported (and default): profile_alignment,behavior_diversity,simulation_diversity."
         ),
     )
     return parser.parse_args()
@@ -182,21 +175,12 @@ def summarize_report_for_log(report: Dict[str, Any]) -> str:
             parts.append(f"profile_alignment_norm={float(profile['score']):.3f}")
         if profile.get("avg_score_1_to_5") is not None:
             parts.append(f"profile_alignment_avg_1_to_5={float(profile['avg_score_1_to_5']):.3f}")
-    semantic = report.get("semantic_diversity")
-    if isinstance(semantic, dict):
-        if semantic.get("score") is not None:
-            parts.append(f"semantic_diversity={float(semantic['score']):.3f}")
-        if semantic.get("score_raw") is not None:
-            parts.append(f"semantic_diversity_raw={float(semantic['score_raw']):.3f}")
     behavior = report.get("behavior_diversity")
     if isinstance(behavior, dict) and behavior.get("score") is not None:
         parts.append(f"behavior_diversity={float(behavior['score']):.3f}")
-    group = report.get("group_diversity")
-    if isinstance(group, dict) and group.get("score") is not None:
-        parts.append(f"group_diversity={float(group['score']):.3f}")
-    min_distance = report.get("min_distance_diversity")
-    if isinstance(min_distance, dict) and min_distance.get("score") is not None:
-        parts.append(f"min_distance_diversity={float(min_distance['score']):.3f}")
+    simulation = report.get("simulation_diversity")
+    if isinstance(simulation, dict) and simulation.get("score") is not None:
+        parts.append(f"simulation_diversity={float(simulation['score']):.3f}")
     return ", ".join(parts) if parts else "(no metric sections)"
 
 
@@ -218,46 +202,40 @@ def evaluate_selected_records(
     resume: bool,
     profile_alignment_cache: Optional[Dict[str, Dict[str, Any]]],
     behavior_extraction_cache: Optional[Dict[str, Dict[str, Any]]],
-    semantic_embedding_cache: Optional[Dict[str, Any]],
+    embedding_cache: Optional[Dict[str, Any]],
     cache_stats: Dict[str, int],
     include_profile_alignment: bool,
-    include_semantic_diversity: bool,
     include_behavior_diversity: bool,
-    include_group_diversity: bool,
-    include_min_distance_diversity: bool,
+    include_simulation_diversity: bool,
     behavior_max_workers: int = 1,
     behavior_worker_tuning: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     input_signature = compute_records_signature(records)
 
     resume_alignment: List[Dict[str, Any]] = []
-    resume_semantic: List[Dict[str, Any]] = []
     resume_behavior: List[Dict[str, Any]] = []
-    resume_min_distance: List[Dict[str, Any]] = []
+    resume_simulation: List[Dict[str, Any]] = []
 
     if resume:
-        resume_alignment, resume_semantic, resume_behavior, resume_min_distance = load_resume_state(
+        resume_alignment, resume_behavior, resume_simulation = load_resume_state(
             checkpoint_path=checkpoint_path,
             input_signature=input_signature,
             num_records=len(records),
         )
-        if resume_alignment or resume_semantic or resume_behavior or resume_min_distance:
+        if resume_alignment or resume_behavior or resume_simulation:
             print(
                 "[Checkpoint] Resume loaded: "
                 f"alignment={len(resume_alignment)}, "
-                f"semantic_profiles={len(resume_semantic)}, "
                 f"behavior_profiles={len(resume_behavior)}, "
-                f"min_distance_profiles={len(resume_min_distance)}",
+                f"simulation_profiles={len(resume_simulation)}",
                 flush=True,
             )
     if not include_profile_alignment:
         resume_alignment = []
-    if not include_semantic_diversity:
-        resume_semantic = []
     if not include_behavior_diversity:
         resume_behavior = []
-    if not include_min_distance_diversity:
-        resume_min_distance = []
+    if not include_simulation_diversity:
+        resume_simulation = []
 
     report = evaluate(
         records,
@@ -267,30 +245,19 @@ def evaluate_selected_records(
         input_signature=input_signature,
         checkpoint_every=checkpoint_every,
         resume_alignment_by_record=resume_alignment,
-        resume_semantic_profiles=resume_semantic,
         resume_behavior_profiles=resume_behavior,
-        resume_min_distance_profiles=resume_min_distance,
+        resume_simulation_profiles=resume_simulation,
         profile_alignment_cache=profile_alignment_cache,
         behavior_extraction_cache=behavior_extraction_cache,
-        semantic_embedding_cache=semantic_embedding_cache,
+        embedding_cache=embedding_cache,
         cache_stats=cache_stats,
         record_cache_key_fn=record_cache_key,
         compute_profile_alignment=include_profile_alignment,
-        compute_semantic_diversity=include_semantic_diversity,
         compute_behavior_diversity=include_behavior_diversity,
-        compute_min_distance_diversity=include_min_distance_diversity,
+        compute_simulation_diversity=include_simulation_diversity,
         behavior_max_workers=behavior_max_workers,
         behavior_worker_tuning=behavior_worker_tuning,
     )
-
-    if include_group_diversity:
-        print("[GroupDiversity] enabled; computing additional metric", flush=True)
-        group_diversity = score_group_diversity(
-            records,
-            embedding_cache=semantic_embedding_cache,
-            embedding_cache_stats=cache_stats,
-        )
-        report["group_diversity"] = group_diversity
 
     write_json(output_path, report)
     return report
@@ -332,13 +299,11 @@ def run_prefix_sweep(
     resume: bool,
     profile_alignment_cache: Optional[Dict[str, Dict[str, Any]]],
     behavior_extraction_cache: Optional[Dict[str, Dict[str, Any]]],
-    semantic_embedding_cache: Optional[Dict[str, Any]],
+    embedding_cache: Optional[Dict[str, Any]],
     cache_stats: Dict[str, int],
     include_profile_alignment: bool,
-    include_semantic_diversity: bool,
     include_behavior_diversity: bool,
-    include_group_diversity: bool,
-    include_min_distance_diversity: bool,
+    include_simulation_diversity: bool,
     behavior_max_workers: int = 1,
     behavior_worker_tuning: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
@@ -365,13 +330,11 @@ def run_prefix_sweep(
             resume=resume,
             profile_alignment_cache=profile_alignment_cache,
             behavior_extraction_cache=behavior_extraction_cache,
-            semantic_embedding_cache=semantic_embedding_cache,
+            embedding_cache=embedding_cache,
             cache_stats=cache_stats,
             include_profile_alignment=include_profile_alignment,
-            include_semantic_diversity=include_semantic_diversity,
             include_behavior_diversity=include_behavior_diversity,
-            include_group_diversity=include_group_diversity,
-            include_min_distance_diversity=include_min_distance_diversity,
+            include_simulation_diversity=include_simulation_diversity,
             behavior_max_workers=behavior_max_workers,
             behavior_worker_tuning=behavior_worker_tuning,
         )
@@ -391,11 +354,8 @@ def run_prefix_sweep(
                 "checkpoint_path": str(per_k_checkpoint),
                 "profile_alignment_score": report.get("profile_alignment", {}).get("score"),
                 "profile_alignment_avg_score_1_to_5": report.get("profile_alignment", {}).get("avg_score_1_to_5"),
-                "semantic_diversity_score": report.get("semantic_diversity", {}).get("score"),
-                "semantic_diversity_score_raw": report.get("semantic_diversity", {}).get("score_raw"),
                 "behavior_diversity_score": report.get("behavior_diversity", {}).get("score"),
-                "group_diversity_score": report.get("group_diversity", {}).get("score"),
-                "min_distance_diversity_score": report.get("min_distance_diversity", {}).get("score"),
+                "simulation_diversity_score": report.get("simulation_diversity", {}).get("score"),
             }
         )
 
@@ -418,10 +378,8 @@ def main() -> None:
 
     selected_metrics = parse_metrics_arg(args.metrics)
     include_profile_alignment = "profile_alignment" in selected_metrics
-    include_semantic_diversity = "semantic_diversity" in selected_metrics
     include_behavior_diversity = "behavior_diversity" in selected_metrics
-    include_group_diversity = "group_diversity" in selected_metrics
-    include_min_distance_diversity = "min_distance_diversity" in selected_metrics
+    include_simulation_diversity = "simulation_diversity" in selected_metrics
     behavior_worker_tuning = {
         "workers_decrease_factor": args.workers_decrease_factor,
         "workers_cooldown_seconds": args.workers_cooldown,
@@ -453,14 +411,14 @@ def main() -> None:
 
     profile_alignment_cache: Dict[str, Dict[str, Any]] = {}
     behavior_extraction_cache: Dict[str, Dict[str, Any]] = {}
-    semantic_embedding_cache: Dict[str, Any] = {}
+    embedding_cache: Dict[str, Any] = {}
     cache_stats: Dict[str, int] = {
         "profile_alignment_hits": 0,
         "profile_alignment_misses": 0,
         "behavior_extraction_hits": 0,
         "behavior_extraction_misses": 0,
-        "semantic_embedding_hits": 0,
-        "semantic_embedding_misses": 0,
+        "embedding_hits": 0,
+        "embedding_misses": 0,
     }
 
     if record_cache_path is not None:
@@ -481,7 +439,7 @@ def main() -> None:
     else:
         print(
             "[RecordCache] Using in-memory caches only (not persisted): "
-            "profile_alignment, behavior_extraction, semantic_embedding",
+            "profile_alignment, behavior_extraction, embedding",
             flush=True,
         )
 
@@ -510,13 +468,11 @@ def main() -> None:
                 resume=args.resume,
                 profile_alignment_cache=profile_alignment_cache,
                 behavior_extraction_cache=behavior_extraction_cache,
-                semantic_embedding_cache=semantic_embedding_cache,
+                embedding_cache=embedding_cache,
                 cache_stats=cache_stats,
                 include_profile_alignment=include_profile_alignment,
-                include_semantic_diversity=include_semantic_diversity,
                 include_behavior_diversity=include_behavior_diversity,
-                include_group_diversity=include_group_diversity,
-                include_min_distance_diversity=include_min_distance_diversity,
+                include_simulation_diversity=include_simulation_diversity,
                 behavior_max_workers=args.workers,
                 behavior_worker_tuning=behavior_worker_tuning,
             )
@@ -548,13 +504,11 @@ def main() -> None:
                 resume=args.resume,
                 profile_alignment_cache=profile_alignment_cache,
                 behavior_extraction_cache=behavior_extraction_cache,
-                semantic_embedding_cache=semantic_embedding_cache,
+                embedding_cache=embedding_cache,
                 cache_stats=cache_stats,
                 include_profile_alignment=include_profile_alignment,
-                include_semantic_diversity=include_semantic_diversity,
                 include_behavior_diversity=include_behavior_diversity,
-                include_group_diversity=include_group_diversity,
-                include_min_distance_diversity=include_min_distance_diversity,
+                include_simulation_diversity=include_simulation_diversity,
                 behavior_max_workers=args.workers,
                 behavior_worker_tuning=behavior_worker_tuning,
             )
@@ -608,8 +562,8 @@ def main() -> None:
             f"misses={cache_stats['profile_alignment_misses']}; "
             f"behavior_extraction hits={cache_stats['behavior_extraction_hits']} "
             f"misses={cache_stats['behavior_extraction_misses']}; "
-            f"semantic_embedding hits={cache_stats['semantic_embedding_hits']} "
-            f"misses={cache_stats['semantic_embedding_misses']}",
+            f"embedding hits={cache_stats['embedding_hits']} "
+            f"misses={cache_stats['embedding_misses']}",
             flush=True,
         )
     else:
@@ -619,8 +573,8 @@ def main() -> None:
             f"misses={cache_stats['profile_alignment_misses']}; "
             f"behavior_extraction hits={cache_stats['behavior_extraction_hits']} "
             f"misses={cache_stats['behavior_extraction_misses']}; "
-            f"semantic_embedding hits={cache_stats['semantic_embedding_hits']} "
-            f"misses={cache_stats['semantic_embedding_misses']}",
+            f"embedding hits={cache_stats['embedding_hits']} "
+            f"misses={cache_stats['embedding_misses']}",
             flush=True,
         )
 

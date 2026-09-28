@@ -5,7 +5,7 @@ Reads the combined metric file of each model
 (``<clean-dir>/<model>_agenda_runs5.metrics.combined.run<N>.json``, written by
 ``combine_metrics``) and reports, per model:
 
-  Simulation Diversity  -- ``min_distance_diversity`` (per-profile score)
+  Simulation Diversity  -- ``simulation_diversity`` (per-profile score)
   Behavior Diversity    -- ``behavior_diversity`` (scored profiles only)
   Profile Alignment     -- ``profile_alignment`` (per-profile score, 0-1)
 
@@ -37,7 +37,7 @@ MODEL_DISPLAY = {
 }
 # (display name, metric section, per-profile value field)
 METRICS = [
-    ("Simulation Diversity", "min_distance_diversity", "min_distance_diversity"),
+    ("Simulation Diversity", "simulation_diversity", "simulation_diversity"),
     ("Behavior Diversity", "behavior_diversity", "behavior_diversity"),
     ("Profile Alignment", "profile_alignment", "score"),
 ]
@@ -61,7 +61,13 @@ def load_docs(clean_dir: Path, run_number: int, models: Sequence[str]) -> Dict[s
     return docs
 
 
+# Metric files written before the rename call Simulation Diversity "min_distance_diversity".
+LEGACY_KEYS = {"simulation_diversity": "min_distance_diversity"}
+
+
 def per_profile_values(doc: dict, section: str, field: str) -> List[float]:
+    if section not in doc and LEGACY_KEYS.get(section) in doc:
+        section = field = LEGACY_KEYS[section]
     if section == "profile_alignment":
         return [float(r[field]) for r in doc[section]["by_model_profile"] if r.get(field) is not None]
     profiles = doc[section]["profiles"]

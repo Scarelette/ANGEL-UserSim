@@ -3,7 +3,7 @@
 
 The main results (``report_main_results``) read one JSON per model with every metric section present
 (``results/clean/<model>_agenda_runs5.metrics.combined.run<N>.json``). In the
-original runs, profile alignment and the four diversity metrics were computed
+original runs, profile alignment and the diversity metrics were computed
 in separate ``evaluate_metrics`` passes over the same transcripts; this script
 takes the sections from each input and writes them into one document. Later
 inputs override earlier ones for a section that appears in both.
@@ -22,12 +22,25 @@ import json
 from pathlib import Path
 
 SECTIONS = (
-    "semantic_diversity",
-    "behavior_diversity",
-    "min_distance_diversity",
-    "group_diversity",
     "profile_alignment",
+    "behavior_diversity",
+    "simulation_diversity",
 )
+# Metric files written before the rename call Simulation Diversity "min_distance_diversity".
+LEGACY_SECTIONS = {"min_distance_diversity": "simulation_diversity"}
+
+
+def _upgrade_legacy(doc: dict) -> dict:
+    for old, new in LEGACY_SECTIONS.items():
+        if old in doc and new not in doc:
+            section = doc[old]
+            for profile in section.get("profiles", []):
+                for suffix in ("", "_raw", "_adjusted"):
+                    if old + suffix in profile:
+                        profile[new + suffix] = profile.pop(old + suffix)
+            section["metric"] = new
+            doc[new] = section
+    return doc
 
 
 def main() -> None:
@@ -38,7 +51,7 @@ def main() -> None:
 
     combined = {"num_records": None}
     for path in args.inputs:
-        doc = json.loads(path.read_text(encoding="utf-8"))
+        doc = _upgrade_legacy(json.loads(path.read_text(encoding="utf-8")))
         n = doc.get("num_records")
         if combined["num_records"] is None:
             combined["num_records"] = n

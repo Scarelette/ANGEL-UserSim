@@ -15,17 +15,13 @@ from experiments.profile_expansion.metrics.behavior_diversity import (
 )
 from experiments.profile_expansion.metrics.common import mean
 from experiments.profile_expansion.metrics.profile_alignment import ASPECT_KEYS, score_profile_alignment
-from experiments.profile_expansion.metrics.semantic_diversity import (
-    METRIC_VARIANT as SEMANTIC_METRIC_VARIANT,
-    score_semantic_diversity,
-)
-from experiments.profile_expansion.metrics.semantic_diversity_min import (
-    METRIC_VARIANT as MIN_DISTANCE_METRIC_VARIANT,
-    score_min_distance_diversity,
+from experiments.profile_expansion.metrics.simulation_diversity import (
+    METRIC_VARIANT as SIMULATION_METRIC_VARIANT,
+    score_simulation_diversity,
 )
 
 # Bump when metric semantics or checkpoint payload semantics change.
-CHECKPOINT_SCHEMA_VERSION = 5
+CHECKPOINT_SCHEMA_VERSION = 6
 
 
 def read_jsonl(path: Path) -> List[Dict[str, Any]]:
@@ -140,39 +136,19 @@ def build_profile_alignment_section(alignment_by_record: List[Dict[str, Any]]) -
     }
 
 
-def build_semantic_section(semantic_profiles: List[Dict[str, Any]]) -> Dict[str, Any]:
+def build_simulation_section(simulation_profiles: List[Dict[str, Any]]) -> Dict[str, Any]:
     sorted_profiles = sorted(
-        semantic_profiles,
+        simulation_profiles,
         key=lambda item: (str(item.get("model")), str(item.get("profile_id"))),
     )
-    score_adjusted = mean(item.get("semantic_diversity", 0.0) for item in sorted_profiles)
+    score_adjusted = mean(item.get("simulation_diversity", 0.0) for item in sorted_profiles)
     score_raw = mean(
-        item.get("semantic_diversity_raw", item.get("semantic_diversity", 0.0))
+        item.get("simulation_diversity_raw", item.get("simulation_diversity", 0.0))
         for item in sorted_profiles
     )
     return {
-        "metric": "semantic_diversity",
-        "variant": SEMANTIC_METRIC_VARIANT,
-        "score": score_adjusted,
-        "score_adjusted": score_adjusted,
-        "score_raw": score_raw,
-        "profiles": sorted_profiles,
-    }
-
-
-def build_min_distance_section(min_distance_profiles: List[Dict[str, Any]]) -> Dict[str, Any]:
-    sorted_profiles = sorted(
-        min_distance_profiles,
-        key=lambda item: (str(item.get("model")), str(item.get("profile_id"))),
-    )
-    score_adjusted = mean(item.get("min_distance_diversity", 0.0) for item in sorted_profiles)
-    score_raw = mean(
-        item.get("min_distance_diversity_raw", item.get("min_distance_diversity", 0.0))
-        for item in sorted_profiles
-    )
-    return {
-        "metric": "min_distance_diversity",
-        "variant": MIN_DISTANCE_METRIC_VARIANT,
+        "metric": "simulation_diversity",
+        "variant": SIMULATION_METRIC_VARIANT,
         "score": score_adjusted,
         "score_adjusted": score_adjusted,
         "score_raw": score_raw,
@@ -204,16 +180,14 @@ def build_report(
     *,
     num_records: int,
     alignment_by_record: List[Dict[str, Any]],
-    semantic_profiles: List[Dict[str, Any]],
     behavior_profiles: List[Dict[str, Any]],
-    min_distance_profiles: Optional[List[Dict[str, Any]]] = None,
+    simulation_profiles: Optional[List[Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
     return {
         "num_records": num_records,
         "profile_alignment": build_profile_alignment_section(alignment_by_record),
-        "semantic_diversity": build_semantic_section(semantic_profiles),
         "behavior_diversity": build_behavior_section(behavior_profiles),
-        "min_distance_diversity": build_min_distance_section(min_distance_profiles or []),
+        "simulation_diversity": build_simulation_section(simulation_profiles or []),
     }
 
 
@@ -221,53 +195,43 @@ def build_report_partial(
     *,
     num_records: int,
     include_profile_alignment: bool,
-    include_semantic_diversity: bool,
     include_behavior_diversity: bool,
-    include_min_distance_diversity: bool = False,
+    include_simulation_diversity: bool = True,
     alignment_by_record: List[Dict[str, Any]],
-    semantic_profiles: List[Dict[str, Any]],
     behavior_profiles: List[Dict[str, Any]],
-    min_distance_profiles: Optional[List[Dict[str, Any]]] = None,
+    simulation_profiles: Optional[List[Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
     report: Dict[str, Any] = {"num_records": num_records}
     if include_profile_alignment:
         report["profile_alignment"] = build_profile_alignment_section(alignment_by_record)
-    if include_semantic_diversity:
-        report["semantic_diversity"] = build_semantic_section(semantic_profiles)
     if include_behavior_diversity:
         report["behavior_diversity"] = build_behavior_section(behavior_profiles)
-    if include_min_distance_diversity:
-        report["min_distance_diversity"] = build_min_distance_section(min_distance_profiles or [])
+    if include_simulation_diversity:
+        report["simulation_diversity"] = build_simulation_section(simulation_profiles or [])
     return report
 
 
 def checkpoint_summary(
     *,
     alignment_by_record: List[Dict[str, Any]],
-    semantic_profiles: List[Dict[str, Any]],
     behavior_profiles: List[Dict[str, Any]],
-    min_distance_profiles: Optional[List[Dict[str, Any]]] = None,
+    simulation_profiles: Optional[List[Dict[str, Any]]] = None,
 ) -> Dict[str, float]:
-    min_distance_profiles = min_distance_profiles or []
+    simulation_profiles = simulation_profiles or []
     return {
         "profile_alignment_norm": mean(item.get("score", 0.0) for item in alignment_by_record),
         "profile_alignment_avg_1_to_5": mean(item.get("avg_score_1_to_5", 0.0) for item in alignment_by_record),
-        "semantic_diversity": mean(item.get("semantic_diversity", 0.0) for item in semantic_profiles),
-        "semantic_diversity_raw": mean(
-            item.get("semantic_diversity_raw", item.get("semantic_diversity", 0.0))
-            for item in semantic_profiles
-        ),
         "behavior_diversity": mean(
             item.get("behavior_diversity", 0.0)
             for item in behavior_profiles
             if item.get("scored", True)
         ),
-        "min_distance_diversity": mean(
-            item.get("min_distance_diversity", 0.0) for item in min_distance_profiles
+        "simulation_diversity": mean(
+            item.get("simulation_diversity", 0.0) for item in simulation_profiles
         ),
-        "min_distance_diversity_raw": mean(
-            item.get("min_distance_diversity_raw", item.get("min_distance_diversity", 0.0))
-            for item in min_distance_profiles
+        "simulation_diversity_raw": mean(
+            item.get("simulation_diversity_raw", item.get("simulation_diversity", 0.0))
+            for item in simulation_profiles
         ),
     }
 
@@ -282,13 +246,12 @@ def write_checkpoint(
     stage: str,
     status: str,
     alignment_by_record: List[Dict[str, Any]],
-    semantic_profiles: List[Dict[str, Any]],
     behavior_profiles: List[Dict[str, Any]],
-    min_distance_profiles: Optional[List[Dict[str, Any]]] = None,
+    simulation_profiles: Optional[List[Dict[str, Any]]] = None,
     message: Optional[str] = None,
     final_report: Optional[Dict[str, Any]] = None,
 ) -> None:
-    min_distance_profiles = min_distance_profiles or []
+    simulation_profiles = simulation_profiles or []
     payload: Dict[str, Any] = {
         "schema_version": CHECKPOINT_SCHEMA_VERSION,
         "status": status,
@@ -300,21 +263,18 @@ def write_checkpoint(
         "num_records_total": num_records,
         "progress": {
             "profile_alignment_records_completed": len(alignment_by_record),
-            "semantic_profiles_completed": len(semantic_profiles),
             "behavior_profiles_completed": len(behavior_profiles),
-            "min_distance_profiles_completed": len(min_distance_profiles),
+            "simulation_profiles_completed": len(simulation_profiles),
         },
         "summary": checkpoint_summary(
             alignment_by_record=alignment_by_record,
-            semantic_profiles=semantic_profiles,
             behavior_profiles=behavior_profiles,
-            min_distance_profiles=min_distance_profiles,
+            simulation_profiles=simulation_profiles,
         ),
         "state": {
             "alignment_records": alignment_by_record,
-            "semantic_profiles": semantic_profiles,
             "behavior_profiles": behavior_profiles,
-            "min_distance_profiles": min_distance_profiles,
+            "simulation_profiles": simulation_profiles,
         },
     }
     if message:
@@ -365,20 +325,20 @@ def load_resume_state(
     checkpoint_path: Path,
     input_signature: str,
     num_records: int,
-) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], List[Dict[str, Any]], List[Dict[str, Any]]]:
+) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], List[Dict[str, Any]]]:
     if not checkpoint_path.exists():
-        return [], [], [], []
+        return [], [], []
 
     try:
         with checkpoint_path.open("r", encoding="utf-8") as f:
             payload = json.load(f)
     except Exception as exc:
         print(f"[Checkpoint] Failed to parse checkpoint ({exc}); ignoring resume state.", flush=True)
-        return [], [], [], []
+        return [], [], []
 
     if not isinstance(payload, dict):
         print("[Checkpoint] Invalid checkpoint format; ignoring resume state.", flush=True)
-        return [], [], [], []
+        return [], [], []
 
     schema_version = payload.get("schema_version")
     if schema_version != CHECKPOINT_SCHEMA_VERSION:
@@ -387,38 +347,34 @@ def load_resume_state(
             f"expected {CHECKPOINT_SCHEMA_VERSION}. Ignoring.",
             flush=True,
         )
-        return [], [], [], []
+        return [], [], []
 
     if payload.get("input_signature") != input_signature:
         print("[Checkpoint] Input signature mismatch; starting from scratch.", flush=True)
-        return [], [], [], []
+        return [], [], []
 
     if payload.get("num_records_total") != num_records:
         print("[Checkpoint] Record count mismatch; starting from scratch.", flush=True)
-        return [], [], [], []
+        return [], [], []
 
     state = payload.get("state", {}) if isinstance(payload.get("state"), dict) else {}
     alignment_records = _as_dict_list(state.get("alignment_records"))
-    semantic_profiles = _as_dict_list(state.get("semantic_profiles"))
     behavior_profiles = _as_dict_list(state.get("behavior_profiles"))
-    min_distance_profiles = _as_dict_list(state.get("min_distance_profiles"))
+    simulation_profiles = _as_dict_list(state.get("simulation_profiles"))
 
     if not state:
         report = payload.get("report", {}) if isinstance(payload.get("report"), dict) else {}
         profile_alignment = report.get("profile_alignment", {}) if isinstance(report.get("profile_alignment"), dict) else {}
-        semantic = report.get("semantic_diversity", {}) if isinstance(report.get("semantic_diversity"), dict) else {}
         behavior = report.get("behavior_diversity", {}) if isinstance(report.get("behavior_diversity"), dict) else {}
-        min_distance = report.get("min_distance_diversity", {}) if isinstance(report.get("min_distance_diversity"), dict) else {}
+        simulation = report.get("simulation_diversity", {}) if isinstance(report.get("simulation_diversity"), dict) else {}
         alignment_records = _as_dict_list(profile_alignment.get("records"))
-        semantic_profiles = _as_dict_list(semantic.get("profiles"))
         behavior_profiles = _as_dict_list(behavior.get("profiles"))
-        min_distance_profiles = _as_dict_list(min_distance.get("profiles"))
+        simulation_profiles = _as_dict_list(simulation.get("profiles"))
 
     normalized_alignment = normalize_alignment_resume(alignment_records, num_records)
-    normalized_semantic = normalize_profile_resume(semantic_profiles)
     normalized_behavior = normalize_profile_resume(behavior_profiles)
-    normalized_min_distance = normalize_profile_resume(min_distance_profiles)
-    return normalized_alignment, normalized_semantic, normalized_behavior, normalized_min_distance
+    normalized_simulation = normalize_profile_resume(simulation_profiles)
+    return normalized_alignment, normalized_behavior, normalized_simulation
 
 
 def evaluate(
@@ -430,34 +386,29 @@ def evaluate(
     input_signature: str,
     checkpoint_every: int,
     resume_alignment_by_record: Optional[List[Dict[str, Any]]] = None,
-    resume_semantic_profiles: Optional[List[Dict[str, Any]]] = None,
     resume_behavior_profiles: Optional[List[Dict[str, Any]]] = None,
-    resume_min_distance_profiles: Optional[List[Dict[str, Any]]] = None,
+    resume_simulation_profiles: Optional[List[Dict[str, Any]]] = None,
     profile_alignment_cache: Optional[Dict[str, Dict[str, Any]]] = None,
     behavior_extraction_cache: Optional[Dict[str, Dict[str, Any]]] = None,
-    semantic_embedding_cache: Optional[Dict[str, Any]] = None,
+    embedding_cache: Optional[Dict[str, Any]] = None,
     cache_stats: Optional[Dict[str, int]] = None,
     record_cache_key_fn: Optional[Callable[[Dict[str, Any]], Optional[str]]] = None,
     compute_profile_alignment: bool = True,
-    compute_semantic_diversity: bool = True,
     compute_behavior_diversity: bool = True,
-    compute_min_distance_diversity: bool = False,
+    compute_simulation_diversity: bool = True,
     behavior_max_workers: int = 1,
     behavior_worker_tuning: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     alignment_by_record: List[Dict[str, Any]] = list(resume_alignment_by_record or [])
-    semantic_profiles: List[Dict[str, Any]] = list(resume_semantic_profiles or [])
     behavior_profiles: List[Dict[str, Any]] = list(resume_behavior_profiles or [])
-    min_distance_profiles: List[Dict[str, Any]] = list(resume_min_distance_profiles or [])
+    simulation_profiles: List[Dict[str, Any]] = list(resume_simulation_profiles or [])
 
     if compute_profile_alignment:
         current_stage = "profile_alignment"
-    elif compute_semantic_diversity:
-        current_stage = "semantic_diversity"
     elif compute_behavior_diversity:
         current_stage = "behavior_diversity"
-    elif compute_min_distance_diversity:
-        current_stage = "min_distance_diversity"
+    elif compute_simulation_diversity:
+        current_stage = "simulation_diversity"
     else:
         current_stage = "done"
 
@@ -581,60 +532,14 @@ def evaluate(
                         stage=current_stage,
                         status="running",
                         alignment_by_record=alignment_by_record,
-                        semantic_profiles=semantic_profiles,
                         behavior_profiles=behavior_profiles,
-                        min_distance_profiles=min_distance_profiles,
+                        simulation_profiles=simulation_profiles,
                     )
                     print(
                         f"[Checkpoint] stage={current_stage} saved "
                         f"alignment={len(alignment_by_record)}/{len(records)}",
                         flush=True,
                     )
-
-        if compute_semantic_diversity:
-            current_stage = "semantic_diversity"
-            write_checkpoint(
-                checkpoint_path,
-                input_path=input_path,
-                output_path=output_path,
-                input_signature=input_signature,
-                num_records=len(records),
-                stage=current_stage,
-                status="running",
-                alignment_by_record=alignment_by_record,
-                semantic_profiles=semantic_profiles,
-                behavior_profiles=behavior_profiles,
-                min_distance_profiles=min_distance_profiles,
-            )
-
-            def on_semantic_profile_scored(profile_score: Dict[str, Any], completed: int, total: int) -> None:
-                semantic_profiles.append(profile_score)
-                write_checkpoint(
-                    checkpoint_path,
-                    input_path=input_path,
-                    output_path=output_path,
-                    input_signature=input_signature,
-                    num_records=len(records),
-                    stage=current_stage,
-                    status="running",
-                    alignment_by_record=alignment_by_record,
-                    semantic_profiles=semantic_profiles,
-                    behavior_profiles=behavior_profiles,
-                    min_distance_profiles=min_distance_profiles,
-                )
-                print(
-                    f"[Checkpoint] stage={current_stage} saved profiles={completed}/{total}",
-                    flush=True,
-                )
-
-            semantic = score_semantic_diversity(
-                records,
-                existing_profiles=list(semantic_profiles),
-                on_profile_scored=on_semantic_profile_scored,
-                embedding_cache=semantic_embedding_cache,
-                embedding_cache_stats=cache_stats,
-            )
-            semantic_profiles = normalize_profile_resume(_as_dict_list(semantic.get("profiles")))
 
         if compute_behavior_diversity:
             current_stage = "behavior_diversity"
@@ -647,9 +552,8 @@ def evaluate(
                 stage=current_stage,
                 status="running",
                 alignment_by_record=alignment_by_record,
-                semantic_profiles=semantic_profiles,
                 behavior_profiles=behavior_profiles,
-                min_distance_profiles=min_distance_profiles,
+                simulation_profiles=simulation_profiles,
             )
 
             def on_behavior_profile_scored(profile_score: Dict[str, Any], completed: int, total: int) -> None:
@@ -663,9 +567,8 @@ def evaluate(
                     stage=current_stage,
                     status="running",
                     alignment_by_record=alignment_by_record,
-                    semantic_profiles=semantic_profiles,
                     behavior_profiles=behavior_profiles,
-                    min_distance_profiles=min_distance_profiles,
+                    simulation_profiles=simulation_profiles,
                 )
                 print(
                     f"[Checkpoint] stage={current_stage} saved profiles={completed}/{total}",
@@ -684,8 +587,8 @@ def evaluate(
             )
             behavior_profiles = normalize_profile_resume(_as_dict_list(behavior.get("profiles")))
 
-        if compute_min_distance_diversity:
-            current_stage = "min_distance_diversity"
+        if compute_simulation_diversity:
+            current_stage = "simulation_diversity"
             write_checkpoint(
                 checkpoint_path,
                 input_path=input_path,
@@ -695,13 +598,12 @@ def evaluate(
                 stage=current_stage,
                 status="running",
                 alignment_by_record=alignment_by_record,
-                semantic_profiles=semantic_profiles,
                 behavior_profiles=behavior_profiles,
-                min_distance_profiles=min_distance_profiles,
+                simulation_profiles=simulation_profiles,
             )
 
-            def on_min_distance_profile_scored(profile_score: Dict[str, Any], completed: int, total: int) -> None:
-                min_distance_profiles.append(profile_score)
+            def on_simulation_profile_scored(profile_score: Dict[str, Any], completed: int, total: int) -> None:
+                simulation_profiles.append(profile_score)
                 write_checkpoint(
                     checkpoint_path,
                     input_path=input_path,
@@ -711,34 +613,31 @@ def evaluate(
                     stage=current_stage,
                     status="running",
                     alignment_by_record=alignment_by_record,
-                    semantic_profiles=semantic_profiles,
                     behavior_profiles=behavior_profiles,
-                    min_distance_profiles=min_distance_profiles,
+                    simulation_profiles=simulation_profiles,
                 )
                 print(
                     f"[Checkpoint] stage={current_stage} saved profiles={completed}/{total}",
                     flush=True,
                 )
 
-            min_distance = score_min_distance_diversity(
+            simulation = score_simulation_diversity(
                 records,
-                existing_profiles=list(min_distance_profiles),
-                on_profile_scored=on_min_distance_profile_scored,
-                embedding_cache=semantic_embedding_cache,
+                existing_profiles=list(simulation_profiles),
+                on_profile_scored=on_simulation_profile_scored,
+                embedding_cache=embedding_cache,
                 embedding_cache_stats=cache_stats,
             )
-            min_distance_profiles = normalize_profile_resume(_as_dict_list(min_distance.get("profiles")))
+            simulation_profiles = normalize_profile_resume(_as_dict_list(simulation.get("profiles")))
 
         report = build_report_partial(
             num_records=len(records),
             include_profile_alignment=compute_profile_alignment,
-            include_semantic_diversity=compute_semantic_diversity,
             include_behavior_diversity=compute_behavior_diversity,
-            include_min_distance_diversity=compute_min_distance_diversity,
+            include_simulation_diversity=compute_simulation_diversity,
             alignment_by_record=alignment_by_record,
-            semantic_profiles=semantic_profiles,
             behavior_profiles=behavior_profiles,
-            min_distance_profiles=min_distance_profiles,
+            simulation_profiles=simulation_profiles,
         )
         write_checkpoint(
             checkpoint_path,
@@ -749,9 +648,8 @@ def evaluate(
             stage="done",
             status="completed",
             alignment_by_record=alignment_by_record,
-            semantic_profiles=semantic_profiles,
             behavior_profiles=behavior_profiles,
-            min_distance_profiles=min_distance_profiles,
+            simulation_profiles=simulation_profiles,
             final_report=report,
         )
         return report
@@ -766,9 +664,8 @@ def evaluate(
             stage=current_stage,
             status="interrupted",
             alignment_by_record=alignment_by_record,
-            semantic_profiles=semantic_profiles,
             behavior_profiles=behavior_profiles,
-            min_distance_profiles=min_distance_profiles,
+            simulation_profiles=simulation_profiles,
             message=f"Interrupted during stage={current_stage}.",
         )
         raise
@@ -782,9 +679,8 @@ def evaluate(
             stage=current_stage,
             status="failed",
             alignment_by_record=alignment_by_record,
-            semantic_profiles=semantic_profiles,
             behavior_profiles=behavior_profiles,
-            min_distance_profiles=min_distance_profiles,
+            simulation_profiles=simulation_profiles,
             message=f"{type(exc).__name__}: {exc}",
         )
         raise
@@ -793,9 +689,8 @@ def evaluate(
 __all__ = [
     "build_report_partial",
     "build_behavior_section",
-    "build_min_distance_section",
+    "build_simulation_section",
     "build_profile_alignment_section",
-    "build_semantic_section",
     "compute_records_signature",
     "evaluate",
     "load_resume_state",

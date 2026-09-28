@@ -7,10 +7,9 @@ realistic, varied conversation that stays faithful to it:
 
 | Paper name | Metric key | What it measures |
 |---|---|---|
-| Simulation Diversity | `min_distance_diversity` | per-topic answer diversity across repeated runs of the same profile (MiniLM embeddings, min-distance, informative-coverage adjusted) |
+| Simulation Diversity | `simulation_diversity` | per-topic answer diversity across repeated runs of the same profile: mean nearest-neighbour cosine distance between runs' answers (MiniLM embeddings), scaled by the share of informative answers |
 | Behavior Diversity | `behavior_diversity` | diversity of behavioral attributes extracted per topic by a GPT-5 judge (`value_only_contrast_v4`) |
 | Profile Alignment | `profile_alignment` | GPT-5 judge, 5 aspects scored 1–5, rescaled to 0–1 |
-| (appendix) | `semantic_diversity`, `group_diversity` | mean pairwise / kNN variants of the embedding diversity |
 
 Patient models compared (`--model`):
 
@@ -94,14 +93,13 @@ M=angel
 python -m experiments.profile_expansion.evaluate_metrics \
   --input  outputs/profile_expansion/results/${M}_agenda_runs25.jsonl \
   --output outputs/profile_expansion/results/${M}_agenda_runs25.metrics.json \
-  --metrics profile_alignment,semantic_diversity,behavior_diversity,group_diversity,min_distance_diversity \
   --run-range 3 25 --workers 8 --resume
 ```
 
 `--run-range 3 25` is a prefix sweep: it writes
 `<model>_agenda_runs25.metrics.run{k}.json`, each pooling the first *k* runs per
-profile. Note that the default `--metrics` omits `profile_alignment` and
-`min_distance_diversity`, so pass the list explicitly. Judge outputs are cached
+profile. All three metrics are computed by default (`--metrics` selects a
+subset). Judge outputs are cached
 per record in `<input>.record_cache.json`, so re-runs are cheap.
 
 The main results use one combined file per model at *k*=4:
@@ -115,6 +113,10 @@ python -m experiments.profile_expansion.combine_metrics \
 (The `runs5` in the file name is kept from the paper's runs; there the 4-run
 metrics came from the first five runs, computed in a separate alignment pass and
 diversity pass — `combine_metrics` accepts several `--inputs` for that case.)
+
+Metric files from the paper's runs name Simulation Diversity
+`min_distance_diversity`; `combine_metrics` and `report_main_results` read that
+name too.
 
 `scripts/evaluate.sh` runs steps 2–3 for all four models.
 
@@ -147,63 +149,9 @@ stage1_short2long.py         Observer prompts + local generation (verbatim promp
 patients/                    Angel Actor, Eeyore, Patient-Psi, Roleplay-doh, profile/state helpers
 azure_clients.py             per-role Azure clients and deployment names
 evaluate_metrics*.py         metric runner (checkpoints, record cache, run sweeps)
-metrics/                     profile_alignment, semantic/min/kNN diversity, behavior_diversity
+metrics/                     profile_alignment, behavior_diversity, simulation_diversity
 combine_metrics.py           merge metric sections into one file per model
 report_main_results.py       main results table (means + 95% bootstrap CIs)
 layout.py                    default input/output locations
 scripts/                     Slurm / shell drivers (no credentials)
 ```
-
-## Provenance
-
-Ported from the research code (`simulate_patient/`, `GRPO-Qwen3/`). Logic,
-prompts, sampling parameters and metric definitions are unchanged; changes are
-limited to imports, paths, credentials, and the items under *Known issues*.
-
-| Original | Here |
-|---|---|
-| `profile_expansion/{run_agenda_experiment,interview_process,patient_models,angel_initializer,evaluate_metrics*}.py` | same names |
-| `profile_expansion/metrics/{common,profile_alignment,semantic_diversity,semantic_diversity_knn,semantic_diversity_min,behavior_diversity}.py` | `metrics/` |
-| `evaluation/{angel,ai_patient,patient_profile,state_manager,patient_psi,roleplay_doh,eeyore}.py`, `actor/sys_prompt.py` | `patients/` |
-| `GRPO-Qwen3/GRPO/short2long_profile_generation.py` (local-generation parts) | `stage1_short2long.py` |
-| `results/fig/plot_paper_figures.py` (the `--print-stats` numbers only) | `report_main_results.py` |
-| `output_generator.getOutput` | `angel_common.llm.get_output` |
-| `run.slurm`, `run_patient_psi_array.slurm` | `scripts/` (credentials removed) |
-| — (done by hand) | `combine_metrics.py`, `layout.py`, `azure_clients.py` |
-
-Not included: the fixed-attribute experiment (`extract_fixed_attributes.py`,
-`generate_masked_profile_variants.py`, `run_fixattr_variant_experiment.py`,
-`unit_test/fix_attr/`), the metric-validity and metric-correlation analyses
-(`unit_test/metric_validity/`, `unit_test/metric_correlation/`), all figure
-scripts (`results/fig/`), `results_old/`, `metrics/semantic_diversity_v0.py`,
-`recompute_metrics_firstk_changed_only.py`,
-`compute_adjusted_topic_scores_rglobal.py`,
-`evaluate_semantic_diversity_informative.py`, and `unit_test/complex_stage/`.
-
-## Known issues
-
-- **Patient-Psi input.** `patient_models.build_evaluation_patient_model` looks for
-  `patient_processed_result.patient_psi_profile`, but the input rows carry
-  `patient_psi_profile` at the top level, so Patient-Psi is built from the short
-  profile (`history` = short profile, other CCD fields empty). The paper's numbers
-  reflect this behavior; it also means all models receive the same information.
-- **Observer temperature is ignored.** `LocalProfileGenerator.generate` samples with
-  `top_p=0.9` at the transformers default temperature 1.0 (the checkpoint's
-  `generation_config.json` sets none); its `temperature` argument (0.1 by
-  default in `TwoStageAngelPatient`) is unused — commented out upstream. Kept as run.
-- **Profile Alignment is stochastic.** The GPT-5 judge runs at temperature 1. The
-  paper's 4-run alignment scores come from a separate judging pass over the first
-  five runs; re-judging the same transcripts gives values ~0.02 different (Angel:
-  0.941 in the paper vs. 0.918 in a later pass).
-- **Default `--metrics`** of `evaluate_metrics` is
-  `semantic_diversity,behavior_diversity,group_diversity`; pass the full list
-  (as above) to get the paper metrics.
-- **Deployment names** `gpt-4-04-14` and `gpt-4o-2` are aliases on the paper's
-  Azure resource, not public model ids; set `ANGEL_*_DEPLOYMENT`.
-- **Stage-1 JSON extraction** (`extract_first_json_object`) counts braces without
-  tracking string literals; a `{` inside a string can truncate the object. Failed
-  parses fall through to a retry and a repair pass, then a minimal profile. Kept
-  as run.
-- `patients/angel.py` prints each system prompt (`sys_P:`) to stdout.
-- The Angel stage-1 → stage-2 schema adapter (`angel_initializer._adapt_stage1_profile_to_angel`)
-  discards the Observer's free-text `simulation_rules`; kept as run.

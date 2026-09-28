@@ -192,16 +192,34 @@ def clean_model_output(text: str) -> str:
 
 
 def extract_first_json_object(text: str) -> Optional[str]:
+    """Return the first brace-balanced JSON object in ``text``, or None.
+
+    Brace counting skips JSON string literals, so a ``{`` or ``}`` inside the
+    profile prose does not end the object early.
+    """
     text = clean_model_output(text)
     start = text.find("{")
     if start == -1:
         return None
 
     depth = 0
+    in_string = False
+    escaped = False
     for idx in range(start, len(text)):
-        if text[idx] == "{":
+        char = text[idx]
+        if in_string:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                in_string = False
+            continue
+        if char == '"':
+            in_string = True
+        elif char == "{":
             depth += 1
-        elif text[idx] == "}":
+        elif char == "}":
             depth -= 1
             if depth == 0:
                 return text[start : idx + 1]

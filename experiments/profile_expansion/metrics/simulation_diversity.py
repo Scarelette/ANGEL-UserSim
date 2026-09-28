@@ -1,19 +1,18 @@
-"""Min-Distance Diversity metric with informative-response coverage adjustment.
+"""Simulation Diversity: per-topic answer diversity across repeated runs of a profile.
 
-This metric keeps the same scorer interface style as semantic_diversity.py and
-semantic_diversity_knn.py, but uses the nearest-neighbor (minimum) distance as
-the raw diversity signal:
+For each (model, profile) pair and each agenda topic:
 
-1) For each topic, collect the informative runs and embed them.
-2) For each informative run, compute its minimum cosine distance to every other
-   informative run (its single nearest neighbor in the full set).
-3) Topic diversity is the mean of these per-run nearest-neighbor distances.
-4) Final score remains coverage-adjusted:
-   min_distance_diversity = raw_min_distance_diversity * informative_run_ratio
+1) Collect the patient's answer in every run and keep the informative ones
+   (enough words and unique words); embed them with all-MiniLM-L6-v2.
+2) For each informative answer, take its cosine distance to its nearest
+   neighbour among the other runs' answers.
+3) Topic diversity is the mean of these nearest-neighbour distances.
+4) The profile score is the mean over topics, adjusted for coverage:
+   simulation_diversity = raw_diversity * informative_run_ratio
 
-Compared with the all-pairs average (semantic_diversity.py), this metric is far
-more sensitive to repeated/duplicated answers: any answer with a near-twin
-anywhere in the set contributes a near-zero distance.
+Using the nearest neighbour (not the all-pairs average) makes the score
+sensitive to repeated answers: an answer with a near-twin in any other run
+contributes a near-zero distance.
 """
 
 from __future__ import annotations
@@ -205,14 +204,14 @@ def _build_embeddings(
         if isinstance(cached, np.ndarray):
             vectors_by_text[text] = cached
             if embedding_cache_stats is not None:
-                embedding_cache_stats["semantic_embedding_hits"] = (
-                    embedding_cache_stats.get("semantic_embedding_hits", 0) + 1
+                embedding_cache_stats["embedding_hits"] = (
+                    embedding_cache_stats.get("embedding_hits", 0) + 1
                 )
         else:
             missing_texts.append(text)
             if embedding_cache_stats is not None:
-                embedding_cache_stats["semantic_embedding_misses"] = (
-                    embedding_cache_stats.get("semantic_embedding_misses", 0) + 1
+                embedding_cache_stats["embedding_misses"] = (
+                    embedding_cache_stats.get("embedding_misses", 0) + 1
                 )
 
     if missing_texts:
@@ -236,7 +235,7 @@ def _build_embeddings(
     return vectors_by_text
 
 
-def score_min_distance_diversity(
+def score_simulation_diversity(
     records: List[Dict[str, Any]],
     *,
     turns_per_topic: int = 1,
@@ -385,9 +384,9 @@ def score_min_distance_diversity(
             "informative_run_ratio": informative_run_ratio,
             "topics": topic_scores,
             "metric_variant": METRIC_VARIANT,
-            "min_distance_diversity_raw": raw_diversity,
-            "min_distance_diversity_adjusted": adjusted_diversity,
-            "min_distance_diversity": adjusted_diversity,
+            "simulation_diversity_raw": raw_diversity,
+            "simulation_diversity_adjusted": adjusted_diversity,
+            "simulation_diversity": adjusted_diversity,
         }
 
         profile_scores.append(profile_score)
@@ -396,15 +395,15 @@ def score_min_distance_diversity(
 
     profile_scores.sort(key=lambda item: (str(item.get("model")), str(item.get("profile_id"))))
 
-    overall_adjusted = mean(item.get("min_distance_diversity", 0.0) for item in profile_scores)
-    overall_raw = mean(item.get("min_distance_diversity_raw", 0.0) for item in profile_scores)
+    overall_adjusted = mean(item.get("simulation_diversity", 0.0) for item in profile_scores)
+    overall_raw = mean(item.get("simulation_diversity_raw", 0.0) for item in profile_scores)
     print(
         f"[MinDistanceDiversity] complete overall_adjusted={overall_adjusted:.3f} "
         f"overall_raw={overall_raw:.3f}",
         flush=True,
     )
     return {
-        "metric": "min_distance_diversity",
+        "metric": "simulation_diversity",
         "variant": METRIC_VARIANT,
         "config": {
             "turns_per_topic": max(1, int(turns_per_topic)),
@@ -417,31 +416,3 @@ def score_min_distance_diversity(
         "score_raw": overall_raw,
         "profiles": profile_scores,
     }
-
-
-# Backward-compatible alias for call-sites that reuse the shared scorer name.
-def score_semantic_diversity(
-    records: List[Dict[str, Any]],
-    *,
-    turns_per_topic: int = 1,
-    max_words_per_topic: Optional[int] = 60,
-    min_words_informative: int = 20,
-    min_unique_words_informative: int = 8,
-    embedding_model: str = DEFAULT_EMBEDDING_MODEL,
-    existing_profiles: Optional[List[Dict[str, Any]]] = None,
-    on_profile_scored: Optional[Callable[[Dict[str, Any], int, int], None]] = None,
-    embedding_cache: Optional[Dict[str, np.ndarray]] = None,
-    embedding_cache_stats: Optional[Dict[str, int]] = None,
-) -> Dict[str, Any]:
-    return score_min_distance_diversity(
-        records,
-        turns_per_topic=turns_per_topic,
-        max_words_per_topic=max_words_per_topic,
-        min_words_informative=min_words_informative,
-        min_unique_words_informative=min_unique_words_informative,
-        embedding_model=embedding_model,
-        existing_profiles=existing_profiles,
-        on_profile_scored=on_profile_scored,
-        embedding_cache=embedding_cache,
-        embedding_cache_stats=embedding_cache_stats,
-    )

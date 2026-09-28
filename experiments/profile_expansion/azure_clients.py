@@ -7,14 +7,14 @@ resource; unset role variables fall back to the shared AZURE_OPENAI_* ones.
 
     role        endpoint / key / version override         deployment (default)
     therapist   ANGEL_THERAPIST_AZURE_{ENDPOINT,API_KEY,API_VERSION}
-                                                          ANGEL_THERAPIST_DEPLOYMENT    (gpt-4-04-14)
+                                                          ANGEL_THERAPIST_DEPLOYMENT    (gpt-4.1)
     baseline    ANGEL_BASELINE_AZURE_{ENDPOINT,API_KEY,API_VERSION}
                                                           ANGEL_PATIENT_PSI_DEPLOYMENT  (gpt-4)
-                                                          ANGEL_ROLEPLAY_DOH_DEPLOYMENT (gpt-4o-2)
+                                                          ANGEL_ROLEPLAY_DOH_DEPLOYMENT (gpt-4o)
 
-The default deployment names are the paper's Azure deployment names, which are
-aliases chosen on that resource: ``gpt-4-04-14`` served gpt-4.1 (2025-04-14) and
-``gpt-4o-2`` served gpt-4o. Set the variables to your own deployment names.
+Defaults are the underlying model names (the paper used gpt-4.1-2025-04-14 for
+the therapist, gpt-4 for Patient-Psi and gpt-4o for Roleplay-doh). Azure
+deployment names are chosen per resource, so set the variables if yours differ.
 """
 
 from __future__ import annotations
@@ -23,9 +23,9 @@ from angel_common.env import get_env, require_env
 from angel_common.llm import DEFAULT_API_VERSION
 
 _DEFAULT_DEPLOYMENTS = {
-    "therapist": "gpt-4-04-14",
+    "therapist": "gpt-4.1",
     "patient_psi": "gpt-4",
-    "roleplay_doh": "gpt-4o-2",
+    "roleplay_doh": "gpt-4o",
 }
 
 

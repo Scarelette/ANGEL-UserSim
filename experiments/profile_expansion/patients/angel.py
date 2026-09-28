@@ -119,8 +119,6 @@ class Angel(AIPatient):
         else:
             system_prompt = generate_system_prompt_profile("")
 
-        print("sys_P: ", system_prompt)
-
         super().__init__(system_prompt=system_prompt)
 
         self.model_name = model_name = resolve_model("actor", model_name)

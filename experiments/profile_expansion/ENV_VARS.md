@@ -19,14 +19,14 @@ GPT-5 judges on another; with a single resource, set only `AZURE_OPENAI_*`.
 
 ## Deployment / model names
 
-| Variable | Default (paper) | Role |
+| Variable | Default | Role (model used in the paper) |
 |---|---|---|
 | `ANGEL_GPT5_DEPLOYMENT` | `gpt-5` | GPT-5 judge deployment (`angel_common.llm.get_output`) |
-| `ANGEL_THERAPIST_DEPLOYMENT` | `gpt-4-04-14` | agenda therapist; the paper's deployment alias for **gpt-4.1 (2025-04-14)** |
-| `ANGEL_PATIENT_PSI_DEPLOYMENT` | `gpt-4` | Patient-Psi baseline |
-| `ANGEL_ROLEPLAY_DOH_DEPLOYMENT` | `gpt-4o-2` | Roleplay-doh baseline; the paper's deployment alias for **gpt-4o** |
+| `ANGEL_THERAPIST_DEPLOYMENT` | `gpt-4.1` | agenda therapist (gpt-4.1-2025-04-14) |
+| `ANGEL_PATIENT_PSI_DEPLOYMENT` | `gpt-4` | Patient-Psi baseline (gpt-4) |
+| `ANGEL_ROLEPLAY_DOH_DEPLOYMENT` | `gpt-4o` | Roleplay-doh baseline (gpt-4o) |
 
-Deployment names are chosen per Azure resource — set these to your own names.
+Defaults are the model names. Azure deployment names are chosen per resource, so set these if yours differ.
 
 ## Local model weights
 

@@ -11,7 +11,7 @@ cd "$(dirname "$0")/../../.."
 
 RES="${ANGEL_OUTPUT_DIR:-outputs}/profile_expansion/results"
 MODELS="${MODELS:-angel eeyore patient_psi roleplay_doh}"
-ALL="profile_alignment,semantic_diversity,behavior_diversity,group_diversity,min_distance_diversity"
+ALL="profile_alignment,behavior_diversity,simulation_diversity"
 RUN_START="${RUN_START:-3}"
 RUN_END="${RUN_END:-25}"
 WORKERS="${WORKERS:-8}"
