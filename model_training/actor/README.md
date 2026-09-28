@@ -197,10 +197,10 @@ These are kept as in the paper's runs; flags are given where a fix is available.
    `SFTConfig.max_length=1024`, so long conversations are truncated, and the
    LM collator puts loss on all tokens (not assistant-only). DPO uses the chat
    template. Pin the versions in `requirements-actor.txt` to reproduce.
-2. **SFT rollouts stopped early.** The original rollout crashed at the first
-   network that `mask_generator` had left unmasked (untagged edges), so only
-   the first ~85 networks of each file were used (423 total). `rollout_sft`
-   now skips such rows; use `--end` to cap rows if you want the same subset.
+2. **SFT rollouts stop early.** Each file's rollout ends at the first network
+   that `mask_generator` left unmasked (untagged edges), so only the first ~85
+   networks of each file are used (423 total), as in the paper's run. Pass
+   `--on-unmasked skip` to continue past such rows.
 3. `mask_generator`: networks where GPT-5 returns fewer type labels than
    symptoms, an unknown pattern, or no `<type>` tag are kept unmasked; the
    category list omits "Physiological Sensation" when building the patient

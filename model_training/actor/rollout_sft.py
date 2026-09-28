@@ -70,6 +70,9 @@ def main():
     ap.add_argument("--start", type=int, default=0, help="first row index (for sharding)")
     ap.add_argument("--end", type=int, default=None, help="stop before this row index")
     ap.add_argument("--quiet", action="store_true")
+    ap.add_argument("--on-unmasked", choices=["stop", "skip"], default="stop",
+                    help="row left unmasked by mask_generator: 'stop' ends the file there, as the "
+                         "paper's run did (423 conversations); 'skip' continues past it")
     args = ap.parse_args()
 
     patient = PromptedPatient(args.patient_model)
@@ -86,9 +89,12 @@ def main():
                 conversation = arena(patient, therapist, item["new_graph"], item["mask"],
                                      max_turns=args.max_turns, verbose=not args.quiet)
             except (KeyError, TypeError) as e:
-                # Rows left unmasked by mask_generator have untagged edges; the
-                # original run crashed on the first such row. Skip them instead.
-                print(f"[skip row {idx}] cannot build patient prompt:", type(e).__name__, e)
+                # Rows left unmasked by mask_generator have untagged edges. The
+                # paper's run ended at the first such row in each file.
+                if args.on_unmasked == "stop":
+                    print(f"[stop at row {idx}] unmasked network:", type(e).__name__, e)
+                    break
+                print(f"[skip row {idx}] unmasked network:", type(e).__name__, e)
                 continue
             f_out.write(json.dumps({"messages": conversation}, ensure_ascii=False) + "\n")
 
