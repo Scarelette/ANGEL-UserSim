@@ -26,8 +26,8 @@ short profile ──► Observer ──► long profile ──► Actor ──�
 | `data/examples/` | Small **synthetic** examples of every input format. No real patient data. |
 | `scripts/check_secrets.py` | Pre-publish scan for keys, tokens and machine-specific paths. |
 
-Each module has its own `README.md` (steps, provenance, known issues),
-`ENV_VARS.md` and `requirements-*.txt`.
+Each module has its own `README.md` (steps and the settings it needs) and
+`requirements-*.txt`.
 
 ## Quick start
 
@@ -68,9 +68,15 @@ the weights are on the Hub, set the fallback ids in `angel_common/paths.py`
 
 ## Credentials
 
-No credential is stored in code. Copy `.env.example` to `.env`, which is
-gitignored and loaded automatically when `python-dotenv` is installed, or
-export the variables in your shell. Which variables a module needs:
+No credential is stored in code. All keys, endpoints, deployment names and
+model paths live in **one file**, `<repo>/.env`:
+
+```bash
+cp .env.example .env     # edit once; every script in the repo reads it
+```
+
+`.env` is gitignored and loaded automatically when any script starts; a
+variable exported in your shell overrides it. Which variables a module needs:
 
 - **`model_usage`:** none.
 - **Training, data generation and experiments:** an Azure OpenAI resource

@@ -51,7 +51,7 @@ The judge (`codebook_llm_judge`) uses `claude-opus-4-6`, temperature 0.0, 1800 m
 
 ```bash
 pip install -r experiments/safety_exp/requirements-safety.txt
-cp .env.example .env        # fill in the keys you need; see ENV_VARS.md
+cp .env.example .env        # fill in the keys you need (listed in ENV_VARS.md)
 ```
 
 All commands below are run **from the repository root**. By default, inputs

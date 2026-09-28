@@ -5,4 +5,3 @@
 #   experiments/profile_expansion/requirements-profile-expansion.txt
 #   experiments/safety_exp/requirements-safety.txt
 -r model_usage/requirements-usage.txt
-python-dotenv>=1.0

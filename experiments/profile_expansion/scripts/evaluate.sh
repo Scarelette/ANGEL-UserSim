@@ -5,7 +5,7 @@
 #
 # Expects $RES/<model>_agenda_runs25.jsonl for angel, eeyore, patient_psi,
 # roleplay_doh (scripts/run_agenda.sbatch). Needs the GPT-5 judge credentials
-# (AZURE_OPENAI_*), see ENV_VARS.md.
+# (AZURE_OPENAI_*) in <repo>/.env.
 set -euo pipefail
 cd "$(dirname "$0")/../../.."
 

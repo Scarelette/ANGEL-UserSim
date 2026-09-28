@@ -17,6 +17,10 @@ import os
 from pathlib import Path
 from typing import Dict, Optional, Tuple
 
+from angel_common.env import load_env
+
+load_env()  # so ANGEL_*_DIR / ANGEL_*_MODEL set in .env apply below
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 DATA_DIR = Path(os.environ.get("ANGEL_DATA_DIR") or REPO_ROOT / "data")
