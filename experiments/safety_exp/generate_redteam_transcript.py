@@ -725,7 +725,7 @@ def main() -> None:
             "auto_attack_max_tokens": args.auto_attack_max_tokens,
             "auto_attack_max_retries": args.auto_attack_max_retries,
             "auto_attack_sleep_seconds": args.auto_attack_sleep_seconds,
-            "anthropic_base_url": resolved_anthropic_base_url,
+            "anthropic_foundry": bool(resolved_anthropic_base_url),
             "dry_run": args.dry_run,
             "patient_backend": args.patient_backend,
             "base_url": args.base_url,

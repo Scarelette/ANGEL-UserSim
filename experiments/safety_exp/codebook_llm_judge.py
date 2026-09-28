@@ -10,7 +10,6 @@ Run from the repository root:
 import argparse
 from pathlib import Path
 
-from angel_common.env import get_env
 from angel_common.llm import anthropic_client
 from angel_common.paths import OUTPUTS_DIR
 
@@ -77,12 +76,6 @@ def parse_args() -> argparse.Namespace:
         type=str,
         default="claude-opus-4-6",
         help="Claude model name.",
-    )
-    parser.add_argument(
-        "--api-key",
-        type=str,
-        default=None,
-        help="Anthropic API key. Prefer the ANTHROPIC_API_KEY env var (keys on the command line end up in shell history).",
     )
     parser.add_argument(
         "--max-tokens",
@@ -171,6 +164,7 @@ def main() -> None:
         records = parse_response_jsonl_file(input_jsonl)
     else:
         records = load_records(input_dir=input_dir, file_glob=args.file_glob)
+    all_keys = {r.stable_key for r in records}
     records = iter_slice(records, args.offset, args.limit)
 
     print(f"Parsed records: {len(records)}")
@@ -196,6 +190,9 @@ def main() -> None:
         existing_keys: set[str] = set()
         next_row_id = 1
     else:
+        dropped = prune_stale_judgments(output_jsonl, all_keys)
+        if dropped:
+            print(f"Dropped {dropped} stale or failed judgment(s) from {output_jsonl}")
         existing_keys, max_existing_row_id = load_existing_keys(output_jsonl)
         next_row_id = max_existing_row_id + 1
 
@@ -203,7 +200,7 @@ def main() -> None:
     prompt_template_text = load_prompt_template(prompt_template_path)
     # Direct Anthropic API by default; set ANTHROPIC_BASE_URL to route through a
     # compatible endpoint (e.g. Azure AI Foundry).
-    client = anthropic_client(api_key=args.api_key or get_env("ANTHROPIC_API_KEY"))
+    client = anthropic_client()
 
     processed = 0
     skipped = 0

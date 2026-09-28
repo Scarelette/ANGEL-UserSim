@@ -586,8 +586,14 @@ def parse_cli_args():
         type=parse_optional_str_arg,
         help=(
             "Output aggregated JSONL path for all generated responses. "
-            "Default: auto-generated under OUTPUT_DIR."
+            "Default: auto-generated under OUTPUT_DIR. An existing file is overwritten "
+            "unless --append is given."
         ),
+    )
+    parser.add_argument(
+        "--append",
+        action="store_true",
+        help="Append to an existing --output-jsonl instead of overwriting it.",
     )
     return parser.parse_args()
 
@@ -925,8 +931,11 @@ def main():
         print(f"Error: {exc}")
         return 1
 
-    if os.path.exists(output_jsonl):
-        print(f"Warning: output JSONL exists and will be appended: {output_jsonl}")
+    if os.path.exists(output_jsonl) and not args.append:
+        # Start fresh: the judge resumes by (file, line index), so leftover
+        # records from an earlier run would be scored twice.
+        open(output_jsonl, "w").close()
+        print(f"Overwriting existing output JSONL: {output_jsonl}")
     else:
         print(f"Output JSONL file: {output_jsonl}")
 

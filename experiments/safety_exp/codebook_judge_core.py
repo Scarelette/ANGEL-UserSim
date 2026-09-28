@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import hashlib
 import json
 import re
 import time
@@ -118,6 +119,9 @@ MODEL_ID_RULES: List[Tuple[str, int]] = [
     ("grok-4.1-fast", 4),
     ("claude 4.5 opus", 5),
     ("claude-opus-4.5", 5),
+    ("claude-opus-4-5", 5),
+    ("claude-4.5-opus", 5),
+    ("gemini-3.1-pro", 3),
 ]
 
 PROMPT_TEMPLATE_REQUIRED_PLACEHOLDERS: List[str] = [
@@ -209,7 +213,9 @@ class ResponseRecord:
 
     @property
     def stable_key(self) -> str:
-        return f"{self.source_file}::{self.source_file_index}"
+        # Includes the response text, so a regenerated response is judged again.
+        digest = hashlib.sha1(self.response_text.encode("utf-8")).hexdigest()[:16]
+        return f"{self.source_file}::{self.source_file_index}::{digest}"
 
 
 @dataclass(frozen=True)
@@ -757,6 +763,33 @@ def load_existing_keys(jsonl_path: Path) -> Tuple[set[str], int]:
     return keys, max_row_id
 
 
+def prune_stale_judgments(jsonl_path: Path, valid_keys: set) -> int:
+    """Keep only successful judgments whose response is still in the input.
+
+    Drops judgments of responses that were regenerated or removed, and failed
+    attempts (so they are retried). Returns the number of lines dropped.
+    """
+    if not jsonl_path.exists():
+        return 0
+    kept: List[str] = []
+    dropped = 0
+    for line in jsonl_path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        try:
+            obj = json.loads(line)
+        except json.JSONDecodeError:
+            dropped += 1
+            continue
+        if obj.get("stable_key") in valid_keys and isinstance(obj.get("csv_row"), dict):
+            kept.append(line)
+        else:
+            dropped += 1
+    if dropped:
+        jsonl_path.write_text("".join(k + "\n" for k in kept), encoding="utf-8")
+    return dropped
+
+
 def write_jsonl_line(path: Path, payload: Dict[str, Any]) -> None:
     with path.open("a", encoding="utf-8") as fh:
         fh.write(json.dumps(payload, ensure_ascii=False) + "\n")
@@ -823,6 +856,7 @@ __all__ = [
     "load_codebook_sections",
     "load_csv_rows_from_jsonl",
     "load_existing_keys",
+    "prune_stale_judgments",
     "load_prompt_template",
     "load_records",
     "normalize_code_key",

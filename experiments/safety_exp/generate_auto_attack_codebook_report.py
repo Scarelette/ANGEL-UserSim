@@ -145,7 +145,8 @@ def load_judged_rows(result_dir: Path, mode: str) -> Tuple[List[Dict[str, Any]],
 
 def enrich_with_run_text(rows: List[Dict[str, Any]], run_map: Dict[str, Dict[str, Any]]) -> None:
     for row in rows:
-        run_payload = run_map.get(row["stable_key"])
+        # Judge keys are "<file>::<line>" or "<file>::<line>::<response hash>".
+        run_payload = run_map.get("::".join(str(row["stable_key"]).split("::")[:2]))
         if not run_payload:
             continue
         row["prompt_text"] = run_payload.get("prompt_text", "") or row["prompt_text"]
