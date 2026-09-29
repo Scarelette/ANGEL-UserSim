@@ -62,6 +62,12 @@ Other commands:
 - `--list` shows the example profiles.
 - `--help` lists all commands.
 
+**If vLLM fails to load** with an error like `` /lib64/libstdc++.so.6: version `CXXABI_1.3.15' not found ``,
+the system C++ runtime is shadowing your conda environment's. Put the environment's
+libraries first: `export LD_LIBRARY_PATH=$CONDA_PREFIX/lib:$LD_LIBRARY_PATH`.
+With the default `--backend auto` the chat falls back to transformers
+(slower) and prints a warning.
+
 ## Python
 
 ```python

@@ -18,6 +18,8 @@ login node, and swapping in a real backend changes nothing but the text source.
 
 from __future__ import annotations
 
+import sys
+
 import json
 import os
 import re
@@ -441,10 +443,29 @@ class VLLMBackend:
             pass
 
 
-def vllm_available() -> bool:
-    import importlib.util
+_VLLM_ERROR: Optional[str] = None
+_VLLM_CHECKED = False
 
-    return importlib.util.find_spec("vllm") is not None
+
+def vllm_available() -> bool:
+    """True if vLLM's engine can actually be imported (not just installed).
+
+    A broken install (e.g. a C++ runtime mismatch) fails only when the engine
+    is imported, so `auto` imports it here and falls back to transformers.
+    """
+    global _VLLM_CHECKED, _VLLM_ERROR
+    if not _VLLM_CHECKED:
+        _VLLM_CHECKED = True
+        import importlib.util
+
+        if importlib.util.find_spec("vllm") is None:
+            _VLLM_ERROR = "not installed"
+        else:
+            try:
+                from vllm import LLM, SamplingParams  # noqa: F401
+            except Exception as exc:  # ImportError, OSError, ...
+                _VLLM_ERROR = f"{type(exc).__name__}: {exc}"
+    return _VLLM_ERROR is None
 
 
 def build_backend(
@@ -466,7 +487,13 @@ def build_backend(
         return StubBackend()
 
     if kind == "auto":
-        kind = "vllm" if vllm_available() else "hf"
+        if vllm_available():
+            kind = "vllm"
+        else:
+            if _VLLM_ERROR != "not installed":
+                print(f"[warn] vLLM could not be loaded ({_VLLM_ERROR}); using transformers instead.",
+                      file=sys.stderr)
+            kind = "hf"
 
     if kind == "vllm":
         return VLLMBackend(
