@@ -34,28 +34,26 @@ cp .env.example .env        # then fill in the values below — the only place t
 | `AZURE_OPENAI_DEPLOYMENT_GPT_4O`, `AZURE_OPENAI_DEPLOYMENT_GPT_5_2_CHAT` | their deployment names | `gpt-4o`, `gpt-5` |
 | `GOOGLE_CLOUD_PROJECT` (+ `gcloud auth application-default login`) | Gemini via Vertex AI | — |
 | `OPENROUTER_API_KEY` | Grok | — |
-| `ANGEL_ACTOR_MODEL` | in-process patient (`--patient-backend angel`) | `models/qwen3-8b-dpo-merged` |
+| `ANGEL_OBSERVER_MODEL`, `ANGEL_ACTOR_MODEL` | the Angel patient | `models/Qwen3-Observer-800`, `models/qwen3-8b-dpo-merged` |
 
 Only the providers you call are needed.
 
 **Inputs:**
 - `data/safety_exp/full_context.txt`: the 58-turn source transcript
   (`You said:` / `ChatGPT said:` format). It comes from an external
-  AI-psychosis red-teaming study and is not included. Ask its authors.
+  AI-psychosis red-teaming study and is not included. 
 - Synthetic stand-ins for trying the pipeline are in `data/examples/safety_exp/`.
 
-**Patient:**
-- `--patient-backend angel` runs `model_usage.angel` in-process (needs a GPU).
-  `--profile-id` indexes `--profiles-jsonl` (the paper used 42 profiles); add
-  `--patient-expand` to run the Observer first.
-- `--patient-backend http --base-url …` (the default) calls a patient service
-  instead; the paper's runs used one. The protocol is in `patient_backends.py`.
+**Patient:** the local Angel model (`model_usage.angel`, needs a GPU) plays the
+user. `--profile-id` indexes `--profiles-jsonl` (the paper used 42 profiles).
+By default the Observer expands the profile and the Actor role-plays the
+result; `--no-patient-expand` gives the profile to the Actor directly.
 
 ## Run
 
 ```bash
 # 1. red-team contexts for patient profiles 0..41 (or a list / file of ids)
-bash experiments/safety_exp/scripts/run_redteam.sh 0,1,2 -- --patient-backend angel
+bash experiments/safety_exp/scripts/run_redteam.sh 0,1,2 -- --profiles-jsonl data/safety_exp/profiles.jsonl
 
 # 2+3. query one chatbot on every context and judge the answers
 MODEL_KEY="gpt 4o"          MODEL_DIR=gpt4o           bash experiments/safety_exp/scripts/run_query_and_judge.sh
@@ -89,7 +87,7 @@ Results on the paper's judge outputs (42 profiles, mean ± 95% CI):
 
 ```
 generate_redteam_transcript.py   step 1: replay the source conversation with the Angel patient
-patient_backends.py              patient: in-process Angel or HTTP service
+angel_patient.py                 the Angel patient (local model_usage.angel)
 query_models.py                  step 2: target models and the 16 test prompts
 codebook_llm_judge.py            step 3: Claude judge (codebook_judge_core.py, prompts/, Codebook.txt)
 generate_auto_attack_codebook_report.py, summarize_results.py   step 4

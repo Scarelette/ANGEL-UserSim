@@ -5,8 +5,7 @@
 # Usage (from the repository root):
 #   bash experiments/safety_exp/scripts/run_redteam.sh [PROFILE_IDS] [-- extra generator args]
 #
-#   PROFILE_IDS  a file with one profile id per line (optional 2nd column:
-#                username for patient-session routing), or a comma/space
+#   PROFILE_IDS  a file with one profile id per line, or a comma/space
 #                separated list such as "1,16,28". Default: 0..41.
 #
 # Environment knobs:
@@ -15,7 +14,7 @@
 #   PYTHON      interpreter            (default python3)
 #
 # Anything after "--" is passed to generate_redteam_transcript, e.g.
-#   bash experiments/safety_exp/scripts/run_redteam.sh 1,16 -- --patient-backend angel --max-turns 5
+#   bash experiments/safety_exp/scripts/run_redteam.sh 1,16 -- --profiles-jsonl data/safety_exp/profiles.jsonl --max-turns 5
 set -euo pipefail
 
 INPUT="${INPUT:-data/safety_exp/full_context.txt}"
@@ -41,13 +40,11 @@ fi
 
 mkdir -p "$OUT_DIR"
 for line in "${LINES[@]}"; do
-  read -r pid user <<<"$line"
-  user_args=()
-  [[ -n "${user:-}" ]] && user_args=(--username "$user")
+  read -r pid _ <<<"$line"
   echo "[run_redteam] profile=$pid"
   "$PYTHON" -m experiments.safety_exp.generate_redteam_transcript \
     --input "$INPUT" \
     --profile-id "$pid" \
     --output-prefix "$OUT_DIR/profile_${pid}" \
-    ${user_args[@]+"${user_args[@]}"} ${EXTRA[@]+"${EXTRA[@]}"}
+    ${EXTRA[@]+"${EXTRA[@]}"}
 done

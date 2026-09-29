@@ -20,13 +20,12 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
-from uuid import uuid4
 
 from angel_common.env import get_env
 from angel_common.llm import anthropic_client
 from angel_common.paths import DATA_DIR, OUTPUTS_DIR
 
-from .patient_backends import HTTPPatientClient, InProcessAngelClient
+from .angel_patient import AngelPatient
 
 
 USER_MARKER = "You said:"
@@ -135,53 +134,37 @@ def parse_args() -> argparse.Namespace:
 
     patient_group = parser.add_argument_group("Patient Simulation")
     patient_group.add_argument(
-        "--patient-backend",
-        choices=["http", "angel"],
-        default="http",
-        help=(
-            "http: a patient-simulation HTTP service at --base-url (how the paper's runs were made). "
-            "angel: load model_usage.angel in this process (needs a GPU)."
-        ),
-    )
-    patient_group.add_argument("--base-url", type=str, default="http://127.0.0.1:8080", help="Patient HTTP service base URL (--patient-backend http).")
-    patient_group.add_argument(
         "--profiles-jsonl",
         type=str,
         default=None,
-        help="Rich-schema profiles JSONL that --profile-id indexes into (--patient-backend angel). Defaults to ANGEL_JSONL_PATH / model_usage default.",
+        help="Patient profiles JSONL that --profile-id indexes into (default: ANGEL_JSONL_PATH / model_usage examples).",
     )
     patient_group.add_argument(
         "--angel-backend",
         choices=["auto", "vllm", "hf", "stub"],
         default=None,
-        help="Inference engine for --patient-backend angel (default: model_usage default / ANGEL_BACKEND).",
+        help="Inference engine for the Angel patient (default: ANGEL_BACKEND / auto).",
     )
     patient_group.add_argument(
-        "--patient-expand",
-        action="store_true",
-        help="Run the Observer (stage 1) on the profile before the Actor (--patient-backend angel). Off by default: bundled profiles go to the Actor directly, as in the paper's runs.",
-    )
-    patient_group.add_argument("--username", type=str, default="redteam_replay", help="Username for patient session routing.")
-    patient_group.add_argument(
-        "--session-id",
-        type=str,
-        default=f"replay_{uuid4().hex[:10]}",
-        help="Session id for patient state isolation.",
+        "--no-patient-expand",
+        dest="patient_expand",
+        action="store_false",
+        help="Skip the Observer and give the profile to the Actor as is "
+             "(default: Observer expands it first, as in model_usage).",
     )
     patient_group.add_argument("--profile-id", type=str, default="0", help="Patient profile id/index.")
-    patient_group.add_argument("--timeout", type=float, default=1200.0, help="HTTP timeout in seconds for patient API calls.")
 
     runtime_group = parser.add_argument_group("Runtime / Robustness")
     runtime_group.add_argument(
         "--dry-run",
         action="store_true",
-        help="Do not call patient API. Use original user turns as stand-ins for simulated replies.",
+        help="Do not run the patient model. Use the source user turns as stand-ins.",
     )
     runtime_group.add_argument(
         "--fallback-to-source-user",
         action="store_true",
         help=(
-            "If API call fails mid-run, fall back to the next original user turn "
+            "If the patient model fails mid-run, fall back to the next source user turn "
             "instead of stopping immediately."
         ),
     )
@@ -209,8 +192,6 @@ def parse_args() -> argparse.Namespace:
         parser.error("--auto-attack-max-retries must be >= 1.")
     if args.auto_attack_sleep_seconds < 0:
         parser.error("--auto-attack-sleep-seconds must be >= 0.")
-    if args.timeout <= 0:
-        parser.error("--timeout must be > 0.")
     if args.patient_initial_user_message is not None and not args.patient_initial_user_message.strip():
         parser.error("--patient-initial-user-message must be non-empty when provided.")
 
@@ -620,26 +601,14 @@ def main() -> None:
     resolved_anthropic_base_url: Optional[str] = args.anthropic_base_url or get_env("ANTHROPIC_BASE_URL")
     auto_attack_client = anthropic_client(base_url=resolved_anthropic_base_url)
 
-    client = None
+    patient = None
     if not args.dry_run:
-        if args.patient_backend == "angel":
-            client = InProcessAngelClient(
-                profile_id=args.profile_id,
-                username=args.username,
-                session_id=args.session_id,
-                profiles_jsonl=args.profiles_jsonl,
-                backend=args.angel_backend,
-                expand=args.patient_expand,
-            )
-        else:
-            client = HTTPPatientClient(
-                base_url=args.base_url,
-                username=args.username,
-                session_id=args.session_id,
-                profile_id=args.profile_id,
-                timeout=args.timeout,
-            )
-        client.init_session()
+        patient = AngelPatient(
+            profile_id=args.profile_id,
+            profiles_jsonl=args.profiles_jsonl,
+            backend=args.angel_backend,
+            expand=args.patient_expand,
+        )
 
     turns: List[Dict[str, Any]] = []
     initial_patient_user_message = (
@@ -664,12 +633,7 @@ def main() -> None:
                     turns=turns,
                     initial_user_message=initial_patient_user_message,
                 )
-                response = client.messages.create(  # type: ignore[union-attr]
-                    model="sim-patient",
-                    messages=patient_api_messages,
-                    max_tokens=1024,
-                )
-                simulated_patient = extract_text_from_messages_response(response).strip()
+                simulated_patient = patient.reply(patient_api_messages).strip()  # type: ignore[union-attr]
                 if not simulated_patient:
                     raise RuntimeError("Patient model returned empty text response.")
                 current_patient = simulated_patient
@@ -727,12 +691,8 @@ def main() -> None:
             "auto_attack_sleep_seconds": args.auto_attack_sleep_seconds,
             "anthropic_foundry": bool(resolved_anthropic_base_url),
             "dry_run": args.dry_run,
-            "patient_backend": args.patient_backend,
-            "base_url": args.base_url,
-            "username": args.username,
-            "session_id": args.session_id,
             "profile_id": args.profile_id,
-            "timeout": args.timeout,
+            "patient_expand": args.patient_expand,
             "fallback_to_source_user": args.fallback_to_source_user,
             "patient_initial_user_message": initial_patient_user_message,
         },

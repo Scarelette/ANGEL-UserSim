@@ -1,7 +1,5 @@
-# experiments/safety_exp — API clients and plotting
+# experiments/safety_exp — API clients
 anthropic>=0.69        # Claude (red-team assistant turns, judge, "claude 4.5 opus"); >=0.69 for AnthropicFoundry
 openai>=1.40           # Azure OpenAI (gpt-4o, gpt-5.2) and OpenRouter (grok)
 google-genai>=1.0      # Gemini on Vertex AI (only for gemini-* model keys)
-requests>=2.31         # --patient-backend http
-numpy>=1.26            # figures/
-# --patient-backend angel additionally needs model_usage/requirements-usage.txt (torch, transformers, ...)
+-r ../../model_usage/requirements-usage.txt   # the local Angel patient (torch, transformers / vLLM)
