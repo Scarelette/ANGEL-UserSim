@@ -12,7 +12,6 @@ import argparse
 import asyncio
 import hashlib
 import json
-import sys
 import time
 from collections import defaultdict
 from pathlib import Path

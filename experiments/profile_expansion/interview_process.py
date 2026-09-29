@@ -4,13 +4,11 @@ from __future__ import annotations
 
 import inspect
 import json
-import os
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
 from angel_common.llm import getOutput
 from experiments.profile_expansion.azure_clients import deployment, role_azure_client
-from experiments.profile_expansion.patient_models import build_patient_system_prompt
 
 
 THERAPIST_SYSTEM_PROMPT = """You are a licensed mental health therapist 
@@ -625,9 +623,6 @@ class TopicInterviewController:
         max_tokens: int = 350,
     ) -> Dict[str, Any]:
         short_profile = _resolve_short_patient_profile(profile_item)
-        if short_profile and hasattr(patient_model, "set_system_prompt"):
-            patient_model.set_system_prompt(build_patient_system_prompt(short_profile))
-
         transcript: List[Dict[str, Any]] = []
         profile_id = profile_item.get("id")
         self._log(f"[Interview] start profile_id={profile_id} run_index={run_index} model={model_label}")
@@ -875,12 +870,6 @@ def build_agenda_therapist(mode: str) -> Any:
     if mode == "azure":
         return PromptedAgendaTherapist()
     raise ValueError(f"Unsupported therapist mode: {mode}")
-
-
-def build_transition_judge(mode: str) -> TopicTransitionJudge:
-    if mode == "gpt5":
-        return GPT5TopicTransitionJudge()
-    raise ValueError(f"Unsupported transition judge mode: {mode}")
 
 
 def _extract_json(text: str) -> Dict[str, Any]:

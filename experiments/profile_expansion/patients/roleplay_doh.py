@@ -1,9 +1,7 @@
-import asyncio
 import logging
-import os
 from typing import Any, Dict, List
 from string import Template
-import json, random
+import random
 from experiments.profile_expansion.azure_clients import deployment, role_azure_client
 from experiments.profile_expansion.patients.ai_patient import AIPatient
 

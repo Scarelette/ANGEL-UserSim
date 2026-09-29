@@ -1,7 +1,6 @@
 import asyncio
 import random
 import re
-from pathlib import Path
 from typing import List, Dict, Optional, Any
 
 import torch
@@ -9,10 +8,8 @@ from transformers import AutoTokenizer, AutoModelForCausalLM
 
 from angel_common.paths import resolve_model
 from experiments.profile_expansion.patients.ai_patient import AIPatient
-from experiments.profile_expansion.patients.sys_prompt import generate_system_prompt, generate_system_prompt_profile
+from experiments.profile_expansion.patients.sys_prompt import generate_system_prompt_profile
 from experiments.profile_expansion.patients.patient_profile import (
-    load_profile_by_id,
-    load_profiles_from_jsonl,
     convert_rich_profile_to_internal,
     build_system_prompt,
 )
@@ -24,11 +21,6 @@ class Angel(AIPatient):
         self,
         profile: str = None,
         profile_dict: Dict[str, Any] = None,
-        profile_list: list = None,
-        mask_list: list = None,
-        jsonl_profile_id: str = None,
-        jsonl_profile_index: int = None,
-        jsonl_path: str = "profiles/patients.jsonl",
         model_name: Optional[str] = None,  # None -> ANGEL_ACTOR_MODEL / models/qwen3-8b-dpo-merged
         device_map: str = "auto",
         torch_dtype: Optional[torch.dtype] = None,
@@ -36,16 +28,8 @@ class Angel(AIPatient):
         self.active_profile = None
         self.state_manager = None
 
-        # =====================================================
-        # Build initial system prompt
-        # Priority:
-        # 1. profile_dict
-        # 2. jsonl_profile_id
-        # 3. jsonl_profile_index
-        # 4. profile_list
-        # 5. profile string
-        # 6. empty profile
-        # =====================================================
+        # Initial system prompt: a rich profile dict (two-stage Angel), else the
+        # short profile text (one-stage ablation), else an empty profile.
 
         if profile_dict is not None:
             if not isinstance(profile_dict, dict):
@@ -67,51 +51,6 @@ class Angel(AIPatient):
                 profile=self.active_profile,
                 dynamic_state=self.state_manager.get_dynamic_state(),
             )
-
-        elif jsonl_profile_id is not None:
-            self.active_profile = load_profile_by_id(
-                profile_id=jsonl_profile_id,
-                jsonl_path=Path(jsonl_path),
-            )
-
-            self.state_manager = PatientStateManager(
-                profile=self.active_profile,
-                max_turns=12,
-            )
-
-            system_prompt = build_system_prompt(
-                profile=self.active_profile,
-                dynamic_state=self.state_manager.get_dynamic_state(),
-            )
-
-        elif jsonl_profile_index is not None:
-            profiles = load_profiles_from_jsonl(Path(jsonl_path))
-
-            if jsonl_profile_index < 0 or jsonl_profile_index >= len(profiles):
-                raise IndexError(
-                    f"jsonl_profile_index={jsonl_profile_index} is out of range. "
-                    f"Found {len(profiles)} profiles in {jsonl_path}."
-                )
-
-            line_num, raw_profile = profiles[jsonl_profile_index]
-
-            self.active_profile = convert_rich_profile_to_internal(
-                raw_profile=raw_profile,
-                line_num=line_num,
-            )
-
-            self.state_manager = PatientStateManager(
-                profile=self.active_profile,
-                max_turns=12,
-            )
-
-            system_prompt = build_system_prompt(
-                profile=self.active_profile,
-                dynamic_state=self.state_manager.get_dynamic_state(),
-            )
-
-        elif profile_list:
-            system_prompt = generate_system_prompt(profile_list, mask_list, profile)
 
         elif profile:
             system_prompt = generate_system_prompt_profile(profile)
@@ -142,28 +81,6 @@ class Angel(AIPatient):
             trust_remote_code=True,
         )
         self.model.eval()
-
-    # =====================================================
-    # Optional: update profile without reloading model
-    # =====================================================
-
-    def set_profile(
-        self,
-        profile: str = None,
-        profile_list: list = None,
-        mask_list: list = None,
-    ):
-        self.active_profile = None
-        self.state_manager = None
-
-        if profile_list:
-            system_prompt = generate_system_prompt(profile_list, mask_list, profile)
-        elif profile:
-            system_prompt = generate_system_prompt_profile(profile)
-        else:
-            system_prompt = generate_system_prompt_profile("")
-
-        self.system_prompt = system_prompt
 
     def set_profile_from_dict(
         self,
@@ -220,53 +137,6 @@ class Angel(AIPatient):
 
         print(
             f"[Angel] Loaded dict profile: "
-            f"name={self.active_profile.get('name')}, "
-            f"profile_id={self.active_profile.get('profile_id')}"
-        )
-
-    def set_profile_from_jsonl(
-        self,
-        profile_id: str = None,
-        profile_index: int = None,
-        jsonl_path: str = "profiles/patients.jsonl",
-    ):
-        if profile_id is None and profile_index is None:
-            raise ValueError("Either profile_id or profile_index must be provided.")
-
-        if profile_id is not None:
-            self.active_profile = load_profile_by_id(
-                profile_id=profile_id,
-                jsonl_path=Path(jsonl_path),
-            )
-
-        else:
-            profiles = load_profiles_from_jsonl(Path(jsonl_path))
-
-            if profile_index < 0 or profile_index >= len(profiles):
-                raise IndexError(
-                    f"profile_index={profile_index} is out of range. "
-                    f"Found {len(profiles)} profiles in {jsonl_path}."
-                )
-
-            line_num, raw_profile = profiles[profile_index]
-
-            self.active_profile = convert_rich_profile_to_internal(
-                raw_profile=raw_profile,
-                line_num=line_num,
-            )
-
-        self.state_manager = PatientStateManager(
-            profile=self.active_profile,
-            max_turns=12,
-        )
-
-        self.system_prompt = build_system_prompt(
-            profile=self.active_profile,
-            dynamic_state=self.state_manager.get_dynamic_state(),
-        )
-
-        print(
-            f"[Angel] Loaded JSONL profile: "
             f"name={self.active_profile.get('name')}, "
             f"profile_id={self.active_profile.get('profile_id')}"
         )

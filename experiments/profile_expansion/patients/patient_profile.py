@@ -1,9 +1,4 @@
-import json
-from pathlib import Path
-from typing import Any, Dict, List, Tuple
-
-
-DEFAULT_JSONL_PATH = Path("profiles/patients.jsonl")
+from typing import Any, Dict, List
 
 
 def _ensure_list(value, default=None):
@@ -67,18 +62,6 @@ def get_profile_name(raw_profile: Dict[str, Any]) -> str:
 
 def get_profile_source(raw_profile: Dict[str, Any]) -> str:
     return raw_profile.get("identity", {}).get("source_title") or raw_profile.get("_meta", {}).get("source_title", "")
-
-
-def get_profile_label(raw_profile: Dict[str, Any], line_num: int | None = None) -> str:
-    name = get_profile_name(raw_profile)
-    age = raw_profile.get("identity", {}).get("age", "")
-    source = get_profile_source(raw_profile)
-    profile_id = make_profile_id(raw_profile, line_num)
-
-    suffix = f" ({source})" if source else ""
-    age_text = f", {age}" if age else ""
-    # return f"{name}{age_text}{suffix} [{profile_id}]"
-    return f"{name}{age_text}{suffix}"
 
 
 def convert_rich_profile_to_internal(raw_profile: Dict[str, Any], line_num: int | None = None) -> Dict[str, Any]:
@@ -152,50 +135,6 @@ def convert_rich_profile_to_internal(raw_profile: Dict[str, Any], line_num: int 
         "_raw_profile": raw_profile,
     }
     return internal
-
-
-def load_profiles_from_jsonl(jsonl_path: Path = DEFAULT_JSONL_PATH) -> List[Tuple[int, Dict[str, Any]]]:
-    if not jsonl_path.exists():
-        raise FileNotFoundError(f"JSONL file not found: {jsonl_path}")
-
-    profiles = []
-    with open(jsonl_path, "r", encoding="utf-8") as f:
-        for line_num, line in enumerate(f, start=1):
-            line = line.strip()
-            if not line:
-                continue
-            raw = json.loads(line)
-            if not is_rich_profile_schema(raw):
-                raise ValueError(f"Invalid JSONL record at line {line_num}: must follow rich patient schema")
-            profiles.append((line_num, raw))
-
-    if not profiles:
-        raise ValueError(f"No valid profiles found in {jsonl_path}")
-    return profiles
-
-
-def list_profile_options(jsonl_path: Path = DEFAULT_JSONL_PATH) -> List[Dict[str, str]]:
-    options = []
-    for line_num, raw in load_profiles_from_jsonl(jsonl_path):
-        options.append({
-            "id": make_profile_id(raw, line_num),
-            "label": get_profile_label(raw, line_num),
-        })
-    return options
-
-
-def load_profile_by_id(profile_id: str, jsonl_path: Path = DEFAULT_JSONL_PATH) -> Dict[str, Any]:
-    for line_num, raw in load_profiles_from_jsonl(jsonl_path):
-        if make_profile_id(raw, line_num) == profile_id:
-            return convert_rich_profile_to_internal(raw, line_num)
-    raise ValueError(f"Profile id '{profile_id}' not found")
-
-
-def load_profile_from_text(profile_text: str) -> Dict[str, Any]:
-    raw_profile = json.loads(profile_text)
-    if not is_rich_profile_schema(raw_profile):
-        raise ValueError("Custom profile must use the same rich JSON schema as the JSONL file.")
-    return convert_rich_profile_to_internal(raw_profile, None)
 
 
 def build_system_prompt(profile: Dict[str, Any], dynamic_state: Dict[str, Any] | None = None) -> str:

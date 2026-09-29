@@ -183,7 +183,3 @@ def score_profile_alignment(record: Dict[str, Any], on_error=None) -> Dict[str, 
         "parse_error": parse_error,
         "raw_judge_output": raw_output,
     }
-
-
-def score_records(records: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    return [score_profile_alignment(record) for record in records]
