@@ -34,20 +34,30 @@ pip install -r model_training/observer/requirements-observer.txt
 cp .env.example .env        # then fill in the values below — the only place to edit
 ```
 
-| Variable | Needed for | Default |
-|---|---|---|
-| `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_KEY` | GPT-5 data building, the S2 edge judge | — |
-| `ANGEL_GPT5_DEPLOYMENT` | GPT-5 (data building, long-profile prose in `eval/`) | `gpt-5` |
-| `ANGEL_EDGE_JUDGE_DEPLOYMENT` | S2 GRPO edge judge | `gpt-5-mini` |
-| `ANGEL_BASE_MODEL` | base model | `Qwen/Qwen3-8B` |
-| `ANGEL_OBSERVER_MODEL` | Observer for `predict_network` and `eval/` | `models/Qwen3-Observer-800` |
+Training uses three models:
 
-Optional:
-- `ANGEL_EDGE_CLASSIFIER_DEPLOYMENT`: only for the "reasonability" score in `eval/`; the name of your fine-tuned edge-classifier deployment (see [Edge classifier](#edge-classifier-for-eval)).
-- `ANGEL_EDGE_JUDGE_*` / `ANGEL_EDGE_CLASSIFIER_*` `_ENDPOINT` and `_API_KEY`, if those models live on another Azure resource.
-- `ANTHROPIC_API_KEY` and `GOOGLE_CLOUD_PROJECT`, for the Claude and Gemini baselines in `eval/`.
-- `--wandb-project` plus `WANDB_API_KEY`, for W&B logging.
-- `ANGEL_DATA_DIR` / `ANGEL_MODELS_DIR` / `ANGEL_OUTPUT_DIR` to move the folders.
+| Model | Used for | Setting (default) |
+|---|---|---|
+| **GPT-5** (Azure OpenAI) | building the training data | `ANGEL_GPT5_DEPLOYMENT` (`gpt-5`) |
+| **gpt-5-mini** (Azure OpenAI) | scoring edges during stage-2 GRPO | `ANGEL_EDGE_JUDGE_DEPLOYMENT` (`gpt-5-mini`) |
+| **Qwen3-8B** | the model being trained | `ANGEL_BASE_MODEL` (`Qwen/Qwen3-8B`, downloaded automatically) |
+
+In `.env`, set your Azure OpenAI resource:
+
+```
+AZURE_OPENAI_ENDPOINT=https://<your-resource>.openai.azure.com/
+AZURE_OPENAI_API_KEY=<your key>
+```
+
+If your Azure deployments are named `gpt-5` and `gpt-5-mini`, that is all.
+Otherwise, also set the two deployment names.
+
+Optional, only for the evaluation in `eval/`:
+- `ANGEL_OBSERVER_MODEL`: the trained Observer (default `models/Qwen3-Observer-800`).
+- `ANGEL_EDGE_CLASSIFIER_DEPLOYMENT`: your fine-tuned edge classifier, for the "reasonability" score (see [Edge classifier](#edge-classifier-for-eval)).
+- `ANTHROPIC_API_KEY` and `GOOGLE_CLOUD_PROJECT`: for the Claude and Gemini baselines.
+
+Add `--wandb-project <name>` to log training to Weights & Biases.
 
 Outputs go under `data/observer/` and `models/`. `data/examples/observer/` has
 synthetic examples of every input file.
