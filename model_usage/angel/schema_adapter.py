@@ -76,11 +76,6 @@ def age_level_from_identity(identity: Dict[str, Any]) -> str:
     return "adult"
 
 
-def is_rich_schema(profile: Dict[str, Any]) -> bool:
-    """True when the dict already uses the flat rich schema the Actor consumes."""
-    return isinstance(profile, dict) and set(RICH_REQUIRED_FIELDS).issubset(profile.keys())
-
-
 def _ensure_dict(value: Any) -> Dict[str, Any]:
     return value if isinstance(value, dict) else {}
 

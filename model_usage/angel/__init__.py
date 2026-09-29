@@ -19,7 +19,6 @@ from . import demo_prompt
 from .pipeline import AngelModel, Session, profile_fingerprint
 from .schema_adapter import adapt_observer_profile, build_minimal_rich_profile
 
-__version__ = "0.1.0"
 
 __all__ = [
     "Actor",

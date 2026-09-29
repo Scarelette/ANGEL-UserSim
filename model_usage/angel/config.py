@@ -54,7 +54,6 @@ class ActorConfig:
     top_p: float = 0.9
     repetition_penalty: float = 1.15
     no_repeat_ngram_size: int = 3
-    max_turns: int = 12               # history kept by the dynamic-state tracker
     max_retries: int = 3              # regenerations of a refusal / repeated reply
     max_sentences: int = 4
 

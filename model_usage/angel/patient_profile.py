@@ -6,16 +6,6 @@ from typing import Any, Dict, List, Tuple
 DEFAULT_JSONL_PATH = Path(__file__).resolve().parents[1] / "examples" / "profiles.jsonl"
 
 
-def _ensure_list(value, default=None):
-    if default is None:
-        default = []
-    if value is None:
-        return default
-    if isinstance(value, list):
-        return value
-    return [value]
-
-
 def _ensure_dict(value) -> Dict[str, Any]:
     """Coerce a field documented as an object into a dict.
 
@@ -27,45 +17,6 @@ def _ensure_dict(value) -> Dict[str, Any]:
     if isinstance(value, dict):
         return value
     return {}
-
-
-def format_bullet_list(items: List[str]) -> str:
-    return "\n".join(f"- {item}" for item in items)
-
-
-STYLE_KEYS = ["age_level", "tone", "vocabulary", "sentence_style", "disclosure_style"]
-
-
-def _coerce_style_items(value: Any) -> List[str]:
-    """Turn any shape of `speaking_style` into the internal list of style phrases.
-
-    speaking_style is never a reason to reject a profile: it is optional, and
-    callers send it as the documented object, as one freeform sentence, as a list
-    of phrases, or not at all. Anything unusable yields [] so the caller gets the
-    "natural and conversational" default instead of an error.
-    """
-    if value is None:
-        return []
-    if isinstance(value, dict):
-        items: List[str] = []
-        for key in STYLE_KEYS:
-            items.extend(_coerce_style_items(value.get(key)))
-        if not items:
-            # Only when no documented key produced anything: undocumented keys
-            # still carry style information, so use them rather than drop them.
-            for key, entry in value.items():
-                if key not in STYLE_KEYS:
-                    items.extend(_coerce_style_items(entry))
-        return items
-    if isinstance(value, (list, tuple, set)):
-        items = []
-        for entry in value:
-            items.extend(_coerce_style_items(entry))
-        return items
-    if not value:                      # "", 0, False -> nothing to say
-        return []
-    text = str(value).strip()
-    return [text] if text else []
 
 
 def is_rich_profile_schema(profile: Dict[str, Any]) -> bool:
@@ -87,9 +38,7 @@ def validate_rich_profile(profile: Dict[str, Any]) -> None:
         "disclosure_rules",
         "simulation_rules",
     ]
-    # speaking_style is deliberately NOT required and never type-checked: any
-    # shape is accepted and normalized by _coerce_style_items, and an absent one
-    # falls back to the default style. It must never fail a request.
+    # speaking_style is optional and never type-checked, so it cannot fail a request.
     if not isinstance(profile, dict):
         raise ValueError(f"Rich profile must be an object, got {type(profile).__name__}")
 
@@ -146,71 +95,22 @@ def get_profile_label(raw_profile: Dict[str, Any], line_num: int | None = None) 
 
 
 def convert_rich_profile_to_internal(raw_profile: Dict[str, Any], line_num: int | None = None) -> Dict[str, Any]:
+    """Validate a rich profile and return its public fields plus the profile itself.
+
+    The Actor renders ``_raw_profile`` into its prompt; the other fields name the
+    patient in listings and API responses.
+    """
     validate_rich_profile(raw_profile)
-
     identity = _ensure_dict(raw_profile.get("identity"))
-    disclosure_rules = _ensure_dict(raw_profile.get("disclosure_rules"))
-    simulation_rules = _ensure_dict(raw_profile.get("simulation_rules"))
-
-    background_list = _ensure_list(raw_profile.get("background"))
-    background_text = " ".join(str(x).strip() for x in background_list if str(x).strip())
-
-    style_items = _coerce_style_items(raw_profile.get("speaking_style"))
-
-    behavior_rules = []
-    if simulation_rules.get("stay_in_character", True):
-        behavior_rules.append("stay in character as the patient")
-    if simulation_rules.get("speak_as_patient_only", True):
-        behavior_rules.append("speak as the patient only")
-    if simulation_rules.get("no_narration", True):
-        behavior_rules.append("do not narrate actions or hidden reasoning")
-    if simulation_rules.get("no_researcher_voice", True):
-        behavior_rules.append("do not sound like a researcher or case report")
-    if simulation_rules.get("keep_responses_conversational", True):
-        behavior_rules.append("keep responses conversational")
-    if simulation_rules.get("do_not_invent_major_facts", True):
-        behavior_rules.append("do not invent major life facts not supported by the profile")
-    if simulation_rules.get("if_unsure_say_limited_knowledge", True):
-        behavior_rules.append("if unsure, respond naturally with limited knowledge")
-    if disclosure_rules.get("reveal_gradually", True):
-        behavior_rules.append("reveal personal history gradually instead of all at once")
-    if disclosure_rules.get("do_not_dump_case_summary", True):
-        behavior_rules.append("do not dump the whole case summary in one response")
-    if disclosure_rules.get("do_not_use_clinical_jargon", True):
-        behavior_rules.append("do not use clinical jargon unless the user introduces it")
-
-    sensitive_topics = []
-    sensitive_topics.extend(_ensure_list(disclosure_rules.get("topics_likely_late")))
-    sensitive_topics.extend(_ensure_list(disclosure_rules.get("topics_avoid_unless_asked")))
-    if not sensitive_topics:
-        sensitive_topics = _ensure_list(raw_profile.get("hidden_state"))
-
-    profile_id = make_profile_id(raw_profile, line_num)
-
-    internal = {
-        "profile_id": profile_id,
+    return {
+        "profile_id": make_profile_id(raw_profile, line_num),
         "name": identity.get("name", "Unknown"),
         "age": identity.get("age", "unknown"),
         "gender": identity.get("gender", "unspecified"),
         "role": identity.get("role", "patient"),
-        "background": background_text,
-        "presenting_problems": _ensure_list(raw_profile.get("presenting_problems")),
-        "speaking_style": style_items if style_items else ["natural and conversational"],
-        "behavior_rules": behavior_rules,
-        "core_beliefs": _ensure_list(raw_profile.get("hidden_state")),
-        "current_emotions": _ensure_list(raw_profile.get("emotions")),
-        "current_behaviors": _ensure_list(raw_profile.get("behaviors")),
-        "sensitive_topics": sensitive_topics,
-        "triggers": _ensure_list(raw_profile.get("triggers")),
-        "family_context": _ensure_list(raw_profile.get("family_context")),
-        "diagnosis_hint": _ensure_list(identity.get("diagnosis_hint")),
-        "topics_likely_early": _ensure_list(disclosure_rules.get("topics_likely_early")),
-        "topics_likely_late": _ensure_list(disclosure_rules.get("topics_likely_late")),
-        "topics_avoid_unless_asked": _ensure_list(disclosure_rules.get("topics_avoid_unless_asked")),
-        "source_title": identity.get("source_title") or _ensure_dict(raw_profile.get("_meta")).get("source_title", ""),
+        "source_title": get_profile_source(raw_profile),
         "_raw_profile": raw_profile,
     }
-    return internal
 
 
 def load_profiles_from_jsonl(jsonl_path: Path = DEFAULT_JSONL_PATH) -> List[Tuple[int, Dict[str, Any]]]:

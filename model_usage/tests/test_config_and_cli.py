@@ -206,17 +206,10 @@ class TestCliEndToEnd(unittest.TestCase):
         self.assertEqual(code, 0, err)
         self.assertIn("[patient]", out)
 
-    def test_demo_runs_multiple_turns(self):
+    def test_say_through_the_observer(self):
         code, out, err = self.run_cli(
-            ["demo", "--backend", "stub", "--jsonl", str(JSONL), "--profile-id", "0", "--turns", "3"]
-        )
-        self.assertEqual(code, 0, err)
-        self.assertEqual(out.count("[patient]"), 3)
-
-    def test_demo_through_the_observer(self):
-        code, out, err = self.run_cli(
-            ["demo", "--backend", "stub", "--jsonl", str(JSONL),
-             "--short-profile", "Mara, 34, running on empty since spring.", "--turns", "1"]
+            ["say", "--backend", "stub", "--jsonl", str(JSONL),
+             "--short-profile", "Mara, 34, running on empty since spring.", "Hello."]
         )
         self.assertEqual(code, 0, err)
         self.assertIn("observer+actor", out)

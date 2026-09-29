@@ -1,39 +1,23 @@
+"""The patient's dynamic emotional state within one conversation.
+
+Starts empty and is updated from keywords in each therapist message; the Actor
+renders it into the system prompt every turn.
+"""
+
 from __future__ import annotations
 
-from typing import Any, Dict, List, Tuple
-import copy
+from typing import Dict, List
 
 
 class PatientStateManager:
-    def __init__(self, profile: Dict[str, Any], max_turns: int = 12):
-        self.max_turns = max_turns
-        self.set_profile(profile)
-
-    def set_profile(self, profile: Dict[str, Any]) -> None:
-        self.profile = copy.deepcopy(profile)
-        self.history: List[Tuple[str, str]] = []
-        self.dynamic_state: Dict[str, Any] = {
-            "current_emotions": list(profile.get("current_emotions", [])),
-            "current_behaviors": list(profile.get("current_behaviors", [])),
-            "sensitive_topics": list(profile.get("sensitive_topics", [])),
+    def __init__(self) -> None:
+        self.dynamic_state: Dict[str, List[str]] = {
+            "current_emotions": [],
+            "current_behaviors": [],
+            "sensitive_topics": [],
         }
 
-    def reset(self) -> None:
-        self.history = []
-        self.dynamic_state = {
-            "current_emotions": list(self.profile.get("current_emotions", [])),
-            "current_behaviors": list(self.profile.get("current_behaviors", [])),
-            "sensitive_topics": list(self.profile.get("sensitive_topics", [])),
-        }
-
-    def get_history(self) -> List[Tuple[str, str]]:
-        return self.history[-self.max_turns:]
-
-    def append_turn(self, user_message: str, assistant_message: str) -> None:
-        self.history.append((user_message, assistant_message))
-        self.history = self.history[-self.max_turns:]
-
-    def get_dynamic_state(self) -> Dict[str, Any]:
+    def get_dynamic_state(self) -> Dict[str, List[str]]:
         return self.dynamic_state
 
     def update_from_user_message(self, user_message: str) -> None:

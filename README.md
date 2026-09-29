@@ -41,7 +41,7 @@ export ANGEL_ACTOR_MODEL=/path/to/qwen3-8b-dpo-merged
 
 python -m model_usage.angel chat --short-profile-file model_usage/examples/example_short_profile.txt
 # no GPU? try the plumbing with fake text:
-python -m model_usage.angel demo --backend stub
+python -m model_usage.angel chat --backend stub --short-profile-file model_usage/examples/example_short_profile.txt
 ```
 
 Run every command from the repository root (`python -m <module>`).

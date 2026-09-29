@@ -1,10 +1,9 @@
 """Command line entry point.
 
-    python -m model_usage.angel --list
-    python -m model_usage.angel chat --profile-id 0
-    python -m model_usage.angel chat --short-profile-file examples/example_short_profile.txt
+    python -m model_usage.angel chat --short-profile-file model_usage/examples/example_short_profile.txt
+    python -m model_usage.angel say --short-profile "Mara, 34, exhausted since spring." "Hi, how are you?"
     python -m model_usage.angel expand --short-profile-file notes.txt --out profile.json
-    python -m model_usage.angel demo --backend stub
+    python -m model_usage.angel --list
 
 In-chat commands: /reset /history /profiles /status /quit
 """
@@ -61,8 +60,6 @@ def build_parser() -> argparse.ArgumentParser:
     once = sub.add_parser("say", parents=[common, profile_args], help="Send one message and exit.")
     once.add_argument("message", help="The therapist message to send.")
 
-    demo = sub.add_parser("demo", parents=[common, profile_args], help="Two scripted turns, no typing.")
-    demo.add_argument("--turns", type=int, default=2)
 
     expand = sub.add_parser("expand", parents=[common, profile_args],
                             help="Run stage 1 only and write the rich profile.")
@@ -163,28 +160,6 @@ def cmd_say(model: AngelModel, args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_demo(model: AngelModel, args: argparse.Namespace) -> int:
-    script = [
-        "Hi, how have you been feeling lately?",
-        "I'm sorry to hear that. Do you want to talk about it?",
-        "What has that been like for you day to day?",
-        "Do you live alone?",
-    ]
-    first = True
-    for message in script[: max(1, args.turns)]:
-        print(f"\n[you] {message}")
-        if first:
-            print("   (loading the model — the first turn can take a while...)")
-        result = model.send(
-            args.user, message, session_id=args.session_id, **(profile_kwargs(args) if first else {})
-        )
-        print_reply(result)
-        first = False
-    model.end(args.user, session_id=args.session_id)
-    print("\n[done] conversation ended.")
-    return 0
-
-
 def cmd_chat(model: AngelModel, args: argparse.Namespace) -> int:
     print("\nInteractive chat. Commands: /reset /history /profiles /status /quit\n")
     first = True
@@ -262,8 +237,6 @@ def main(argv: Optional[list] = None) -> int:
             return cmd_expand(model, args)
         if args.command == "say":
             return cmd_say(model, args)
-        if args.command == "demo":
-            return cmd_demo(model, args)
         if args.command == "chat":
             return cmd_chat(model, args)
     except FileNotFoundError as exc:

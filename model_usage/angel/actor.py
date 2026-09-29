@@ -68,8 +68,8 @@ class Actor:
         self.base_system_prompt = demo_prompt.build_patient_system_prompt(
             demo_prompt.profile_to_short_text(self.rich_profile)
         )
-        # Empty profile: state accumulates from therapist keywords alone.
-        self.state_manager = PatientStateManager(profile={}, max_turns=self.config.max_turns)
+        # The emotional state starts empty and accumulates from therapist keywords.
+        self.state_manager = PatientStateManager()
 
         self.conversation: List[Dict[str, str]] = []
 
@@ -178,12 +178,6 @@ class Actor:
             self.conversation.append({"role": "therapist", "content": message})
             self.conversation.append({"role": "patient", "content": reply})
         return reply
-
-    async def areply(self, user_message: str, *, record: bool = True) -> str:
-        """Async wrapper for callers driving several patients concurrently."""
-        import asyncio
-
-        return await asyncio.to_thread(self.reply, user_message, record=record)
 
     def unload(self) -> None:
         self.backend.unload()

@@ -24,7 +24,8 @@ class TestProfileBinding(unittest.TestCase):
     def test_rich_profile_is_converted(self):
         actor = make_actor()
         self.assertEqual(actor.profile["name"], "Sam")
-        self.assertTrue(actor.profile["behavior_rules"])
+        self.assertTrue(actor.profile["profile_id"])
+        self.assertEqual(actor.profile["_raw_profile"]["identity"]["name"], "Sam")
 
     def test_rich_profile_is_retained_for_prompt_rendering(self):
         actor = make_actor()
@@ -121,7 +122,7 @@ class TestActorPrompt(unittest.TestCase):
 
     def test_full_history_is_sent_unwindowed(self):
         # The entire conversation is sent every turn.
-        actor = make_actor(max_turns=2)
+        actor = make_actor()
         for i in range(5):
             actor.reply(f"Question {i}?")
         self.assertEqual(actor.num_turns, 5)

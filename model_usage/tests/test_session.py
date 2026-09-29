@@ -158,7 +158,7 @@ class TestActorInputIsObserverOutput(unittest.TestCase):
         model.send("carol", "Hi.", short_profile="Mara, 34, running on empty since spring.")
         session = model.sessions["carol::default"]
         # The stub Observer invents this background; free text never contained it.
-        self.assertIn("Works shift hours at a warehouse.", session.actor.profile["background"])
+        self.assertIn("Works shift hours at a warehouse.", session.actor.rich_profile["background"])
         self.assertIs(session.actor.rich_profile, session.actor.profile["_raw_profile"])
         self.assertTrue(session.actor.rich_profile["_meta"]["stage1_schema_adapted"])
 
@@ -188,7 +188,7 @@ class TestActorInputIsObserverOutput(unittest.TestCase):
         self.assertTrue(result["model"]["observer_used"])
         session = model.sessions["dana::default"]
         self.assertTrue(session.actor.rich_profile["_meta"]["stage1_schema_adapted"])
-        self.assertIn("Works shift hours at a warehouse.", session.actor.profile["background"])
+        self.assertIn("Works shift hours at a warehouse.", session.actor.rich_profile["background"])
 
     def test_expand_true_routes_a_builtin_profile_through_the_observer(self):
         model = make_model()
@@ -325,7 +325,7 @@ class TestProfileFingerprint(unittest.TestCase):
 
         session = model.sessions["dave::default"]
         self.assertEqual(
-            session.actor.profile["presenting_problems"], ["Completely different presenting problem"]
+            session.actor.rich_profile["presenting_problems"], ["Completely different presenting problem"]
         )
 
     def test_identical_profile_continues_the_session(self):

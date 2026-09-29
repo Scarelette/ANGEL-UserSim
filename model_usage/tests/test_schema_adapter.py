@@ -9,7 +9,6 @@ from model_usage.angel.schema_adapter import (
     age_level_from_identity,
     build_minimal_rich_profile,
     coerce_list,
-    is_rich_schema,
     merge_lists,
 )
 
@@ -73,15 +72,13 @@ class TestAdaptObserverProfile(unittest.TestCase):
             self.assertIn(field, self.rich, field)
 
     def test_output_passes_rich_schema_checks(self):
-        self.assertTrue(is_rich_schema(self.rich))
         self.assertTrue(is_rich_profile_schema(self.rich))
 
     def test_output_converts_for_the_actor(self):
         # The real contract: whatever stage 1 produces must be loadable by stage 2.
         internal = convert_rich_profile_to_internal(self.rich, None)
         self.assertTrue(internal["name"])
-        self.assertTrue(internal["presenting_problems"])
-        self.assertTrue(internal["behavior_rules"])
+        self.assertTrue(internal["_raw_profile"]["presenting_problems"])
 
     def test_nested_sections_are_flattened_into_lists(self):
         self.assertIn("Sunday evenings", self.rich["triggers"])
@@ -128,7 +125,7 @@ class TestMinimalFallback(unittest.TestCase):
     def test_builds_usable_profile_from_text(self):
         rich = build_minimal_rich_profile("Adult with low mood.", source_title="fallback")
         internal = convert_rich_profile_to_internal(rich, None)
-        self.assertEqual(internal["presenting_problems"], ["Adult with low mood."])
+        self.assertEqual(internal["_raw_profile"]["presenting_problems"], ["Adult with low mood."])
 
     def test_empty_text_rejected(self):
         with self.assertRaises(ValueError):
