@@ -33,8 +33,8 @@ def build_parser() -> argparse.ArgumentParser:
     common.add_argument("--user", default="local", help="Conversation owner (keeps sessions separate).")
     common.add_argument("--session-id", default="default")
     common.add_argument("--backend", choices=["auto", "vllm", "hf", "stub"], default=None,
-                        help="'auto' (default) prefers vLLM then transformers; 'vllm' is the "
-                             "engine the reference demo runs; 'hf' is transformers; 'stub' is a no-GPU fake.")
+                        help="'auto' (default) prefers vLLM, then transformers; 'vllm' or 'hf' force "
+                             "one engine; 'stub' is a no-GPU fake for trying the plumbing.")
     common.add_argument("--observer-model", default=None, help="Path to the stage-1 Observer checkpoint.")
     common.add_argument("--actor-model", default=None, help="Path to the stage-2 Actor checkpoint.")
     common.add_argument("--jsonl", default=None, help="Path to the profiles JSONL.")
@@ -46,12 +46,12 @@ def build_parser() -> argparse.ArgumentParser:
     common.add_argument("--max-new-tokens", type=int, default=None, help="Actor reply ceiling.")
     common.add_argument("--temperature", type=float, default=None, help="Actor temperature.")
     common.add_argument("--prompt-style", choices=["patient_demo", "angel_eval"], default=None,
-                        help="'patient_demo' (default) matches the reference demo / the user-study app; "
-                             "'angel_eval' matches the paper evaluation actor (experiments/profile_expansion).")
+                        help="'patient_demo' (default): the demo / user-study prompt; "
+                             "'angel_eval': the prompt of the paper's profile-expansion experiment.")
 
     profile_args = argparse.ArgumentParser(add_help=False)
     group = profile_args.add_mutually_exclusive_group()
-    group.add_argument("--profile-id", default=None, help="Bundled profile: numeric index or canonical id.")
+    group.add_argument("--profile-id", default=None, help="Profile from --jsonl: numeric index or canonical id.")
     group.add_argument("--profile-file", default=None, help="Rich-schema profile JSON file.")
     group.add_argument("--short-profile", default=None, help="Short free-text description (runs the Observer).")
     group.add_argument("--short-profile-file", default=None, help="File holding a short description.")
@@ -132,13 +132,12 @@ def profile_kwargs(args: argparse.Namespace) -> Dict[str, Any]:
     if getattr(args, "profile_id", None):
         return {"profile_id": args.profile_id, "expand": bool(getattr(args, "expand", True))}
 
-    # Nothing specified: fall back to the first example profile, matching the
-    # API version's default-profile behaviour.
+    # Nothing specified: use the first profile in --jsonl.
     return {"profile_id": "0", "expand": bool(getattr(args, "expand", True))}
 
 
 def print_profiles(model: AngelModel) -> None:
-    print("Bundled profiles:")
+    print(f"Profiles in {model.config.jsonl_path}:")
     for item in model.list_profiles():
         print(f"  {item['id']:>3}  {item['label']}")
 

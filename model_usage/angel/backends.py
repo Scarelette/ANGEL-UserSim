@@ -2,15 +2,14 @@
 
 Three implementations behind one small interface:
 
-- `VLLMBackend`  — vLLM. **The engine the reference demo runs**, so this is the one that
-                   reproduces its output distribution. Needs a GPU and ~16 GB.
+- `VLLMBackend`  — vLLM, the default engine (the one the released demo uses).
+                   Needs a GPU and ~16 GB.
 - `HFBackend`    — transformers. Same weights, same prompts, but a different
                    sampling implementation, so output is not bit-comparable
                    with vLLM even at identical settings.
 - `StubBackend`  — deterministic canned output. No torch, no weights, no GPU.
 
-`build_backend("auto", ...)` prefers vLLM and falls back to transformers, which
-is what `the reference demo` does.
+`build_backend("auto", ...)` prefers vLLM and falls back to transformers.
 
 The stub is what makes this package testable: the whole pipeline (profile
 adaptation, session state, postprocessing, CLI) runs against `StubBackend` on a
@@ -336,16 +335,14 @@ class StubBackend:
 
 
 class VLLMBackend:
-    """vLLM-backed causal LM — the engine the reference demo runs.
+    """vLLM-backed causal LM (the default engine).
 
-    Mirrors `the reference demo`: bfloat16, a fixed
-    `gpu_memory_utilization` fraction, `enforce_eager=True` (this cluster blocks
-    `nvcc`, so torch.compile / CUDA graphs are unavailable), and the FlashInfer
-    sampler disabled. Engine calls are serialized behind a lock.
+    bfloat16, a fixed `gpu_memory_utilization` fraction, `enforce_eager=True`
+    (no CUDA-graph compilation, so it also runs where `nvcc` is unavailable) and
+    the FlashInfer sampler disabled. Engine calls are serialized behind a lock.
 
     Sampling goes through `SamplingParams`, which is *not* bit-comparable with
-    transformers' `generate` even at identical settings. Use this backend when
-    matching the reference demo output distribution matters.
+    transformers' `generate` even at identical settings.
     """
 
     name = "vllm"
@@ -404,8 +401,7 @@ class VLLMBackend:
         sp_kwargs: Dict[str, Any] = dict(
             temperature=temperature, top_p=top_p, max_tokens=max_new_tokens
         )
-        # the reference demo does not seed; this is an addition, used to make the
-        # engine-level differential test in scripts/gpu_full_test.py exact.
+        # Optional seed for reproducible sampling.
         if seed is not None:
             sp_kwargs["seed"] = seed
         if repetition_penalty is not None:
@@ -462,8 +458,7 @@ def build_backend(
 ) -> Backend:
     """Construct a backend.
 
-    `auto` prefers vLLM and falls back to transformers, which is what
-    `the reference demo` does.
+    `auto` prefers vLLM and falls back to transformers.
     """
     kind = (kind or "auto").lower()
 

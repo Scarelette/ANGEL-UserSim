@@ -2,7 +2,7 @@
 
 Stage 1 (Observer) expands a short patient description into a structured long
 profile. Stage 2 (Actor) role-plays the patient over a multi-turn conversation.
-No HTTP server, no Slurm, no GPU pool: import it and talk to the model.
+Everything runs locally in this process: import it and talk to the model.
 
     from model_usage.angel import AngelModel
 

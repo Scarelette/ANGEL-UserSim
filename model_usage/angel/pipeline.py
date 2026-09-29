@@ -1,13 +1,12 @@
 """The two-stage runner and its session surface.
 
-`AngelModel` owns both stages and the conversation registry. Its session methods
-mirror the HTTP API version one-for-one, minus the transport:
+`AngelModel` owns both stages and the conversations. Session methods:
 
-    POST /v1/conversation/send     ->  model.send(user, message, ...)
-    POST /v1/conversation/history  ->  model.history(user)
-    POST /v1/conversation/reset    ->  model.reset(user)
-    POST /v1/conversation/end      ->  model.end(user)
-    GET  /v1/profiles              ->  model.list_profiles()
+    model.send(user, message, ...)   one therapist message -> patient reply
+    model.history(user)              the transcript so far
+    model.reset(user)                clear the transcript, keep the patient
+    model.end(user)                  drop the conversation
+    model.list_profiles()            profiles available by --profile-id
 
 Profile sources, in the order `send` checks them:
 
@@ -45,10 +44,9 @@ from .patient_profile import (
 def profile_fingerprint(profile: Dict[str, Any]) -> str:
     """Content hash of a profile, used to decide whether a session must restart.
 
-    The API version compared `profile_id` alone, and `profile_id` is derived from
-    name + source_title only. Two different edits of the same template therefore
-    collided, and the second profile was silently discarded while the caller kept
-    talking to the first. Hashing the whole body removes that class of bug.
+    `profile_id` is derived from name + source_title only, so two edited
+    versions of one profile would share it. Hashing the whole body makes an
+    edited profile start a new conversation instead of silently reusing the old one.
     """
     payload = profile.get("_raw_profile", profile)
     try:
@@ -97,7 +95,7 @@ class AngelModel:
     # -- profiles ----------------------------------------------------------
 
     def list_profiles(self) -> List[Dict[str, str]]:
-        """Bundled profiles, with the same numeric-index ids the API exposed."""
+        """Profiles in the configured JSONL, addressable by numeric index."""
         options = list_profile_options(Path(self.config.jsonl_path))
         return [
             {"id": str(index), "canonical_id": item["id"], "label": item["label"]}
@@ -151,8 +149,7 @@ class AngelModel:
     ) -> ExpansionResult:
         """Run stage 1 on its own (useful for pre-building profiles in batch).
 
-        Accepts free text or a rich-schema profile dict, matching the
-        `{short_text | profile}` input of the reference demo's `/expand`.
+        Accepts free text or a rich-schema profile dict (rendered to text first).
         """
         return self.observer.expand(short_profile, source_title=source_title)
 
@@ -344,7 +341,7 @@ class AngelModel:
     # -- lifecycle ---------------------------------------------------------
 
     def status(self) -> Dict[str, Any]:
-        """Equivalent of the API version's /health."""
+        """Resolved configuration and active sessions."""
         return {
             "ok": True,
             "service": "model_usage.angel",

@@ -1,21 +1,14 @@
 """Demo-style prompting for the Actor (stage 2).
 
-This is the prompt path used by `the reference demo` and, per its own comment, by the
-study app: `patient_chat.build_patient_system_prompt` fed with
-`profile_text.profile_to_short_text`. It is NOT the same as
-`patient_profile.build_system_prompt`, which is what
-`the paper evaluation actor (experiments/profile_expansion)` uses — different template, different
-profile rendering, different output cleanup.
+The default prompt (`prompt_style="patient_demo"`), used by the interactive
+demo and the user study: `PATIENT_SYSTEM_TEMPLATE` filled with the profile
+rendered as text by `profile_to_short_text`, with replies cleaned by
+`clean_reply`.
 
-Because the two paths put materially different text in front of the same
-checkpoint, they do not behave the same. This module is the default so that
-model_usage.angel reproduces the reference demo; `prompt_style="angel_eval"` selects the
-other one.
-
-Vendored from:
-  the reference demo   (PATIENT_SYSTEM_TEMPLATE, clean_reply,
-                                  render_dynamic_state, to_chat_messages)
-  the reference demo   (profile_to_short_text)
+The paper's profile-expansion experiment prompts the same checkpoint
+differently (`prompt_style="angel_eval"`, `patient_profile.build_system_prompt`):
+a different template, profile rendering and output cleanup, so the two styles
+do not behave the same.
 """
 
 from __future__ import annotations

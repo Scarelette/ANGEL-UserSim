@@ -1,10 +1,9 @@
 """Stage 2 — the Actor model (the simulated patient).
 
-Two prompt styles are supported, because the two upstream implementations that
-drive this same checkpoint do not prompt it the same way:
+Two prompt styles drive the same checkpoint:
 
-`prompt_style="patient_demo"` (**default**) reproduces `the reference demo` and, per
-its own comment, the user-study app:
+`prompt_style="patient_demo"` (**default**), used by the interactive demo and the
+user study:
   - system prompt: `demo_prompt.PATIENT_SYSTEM_TEMPLATE`, filled with the profile
     rendered by `profile_to_short_text`
   - dynamic state starts **empty** (`PatientStateManager({})`) and accumulates
@@ -14,14 +13,14 @@ its own comment, the user-study app:
   - per turn the system prompt gets `\\n\\n<state block>` then `\\n\\n<length cue>`
   - output cleaned by `demo_prompt.clean_reply` (prefers `<patient>…</patient>`)
 
-`prompt_style="angel_eval"` reproduces `the paper evaluation actor (experiments/profile_expansion)`:
+`prompt_style="angel_eval"`, the prompt of the paper's profile-expansion experiment:
   - system prompt: `patient_profile.build_system_prompt`, rebuilt each turn
   - dynamic state **seeded from the profile**
   - history windowed to `max_turns`
   - output cleaned by `postprocess.clean_reply` (handles `<state>`, role leakage,
     duplicate paragraphs, prompt-echo fallback)
 
-Same weights, materially different behaviour. Default is the reference demo parity.
+Same weights, noticeably different behaviour.
 """
 
 from __future__ import annotations
@@ -85,7 +84,7 @@ class Actor:
             self.rich_profile = copy.deepcopy(profile)
 
         if self.prompt_style == "patient_demo":
-            # the reference demo builds the system prompt once, from the profile only.
+            # Built once, from the profile only.
             self.base_system_prompt = demo_prompt.build_patient_system_prompt(
                 demo_prompt.profile_to_short_text(self.rich_profile)
             )
@@ -138,7 +137,7 @@ class Actor:
 
     def _build_messages(self, conversation: List[Dict[str, str]], cue: Optional[str]) -> List[Dict[str, str]]:
         if self.prompt_style == "patient_demo":
-            # Full conversation, exactly as the reference demo sends it.
+            # The full conversation is sent every turn.
             return demo_prompt.to_chat_messages(self._system_prompt_for_turn(cue), conversation)
 
         # angel_eval windows the history to the last `max_turns` exchanges.
@@ -238,7 +237,7 @@ class Actor:
 
 
 def profile_summary(internal_profile: Dict[str, Any]) -> Dict[str, Any]:
-    """The public view of a profile (mirrors the API version's `profile_public`)."""
+    """The public view of a profile (id, name, age, ...)."""
     return {
         "profile_id": internal_profile.get("profile_id"),
         "name": internal_profile.get("name"),

@@ -250,13 +250,6 @@ def load_profile_by_id(profile_id: str, jsonl_path: Path = DEFAULT_JSONL_PATH) -
     raise ValueError(f"Profile id '{profile_id}' not found")
 
 
-def load_profile_from_text(profile_text: str) -> Dict[str, Any]:
-    raw_profile = json.loads(profile_text)
-    if not is_rich_profile_schema(raw_profile):
-        raise ValueError("Custom profile must use the same rich JSON schema as the JSONL file.")
-    return convert_rich_profile_to_internal(raw_profile, None)
-
-
 def build_system_prompt(profile: Dict[str, Any], dynamic_state: Dict[str, Any] | None = None) -> str:
     emotions = dynamic_state.get("current_emotions", profile["current_emotions"]) if dynamic_state else profile["current_emotions"]
     behaviors = dynamic_state.get("current_behaviors", profile["current_behaviors"]) if dynamic_state else profile["current_behaviors"]

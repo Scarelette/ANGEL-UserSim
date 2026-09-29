@@ -4,7 +4,7 @@
     "age": "29",
     "gender": "non-binary",
     "role": "adult patient",
-    "source_title": "Custom profile",
+    "source_title": "Synthetic example profile",
     "diagnosis_hint": ["Generalized anxiety", "Difficulty sleeping"]
   },
   "background": [

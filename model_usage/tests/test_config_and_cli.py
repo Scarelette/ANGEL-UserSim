@@ -198,7 +198,7 @@ class TestCliEndToEnd(unittest.TestCase):
     def test_list_profiles(self):
         code, out, _ = self.run_cli(["--list"])
         self.assertEqual(code, 0)
-        self.assertIn("Bundled profiles:", out)
+        self.assertIn("Profiles in ", out)
 
     def test_status(self):
         code, out, _ = self.run_cli(["--status"])

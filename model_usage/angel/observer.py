@@ -65,9 +65,7 @@ class Observer:
         """Expand a short profile into a rich profile.
 
         `short_profile` is either free text or a rich-schema profile dict. A dict
-        is rendered with `profile_to_short_text` first, which is what
-        `the reference demo` does with its `profile` field:
-        `short_text or profile_to_short_text(req.profile)`.
+        is rendered to text with `profile_to_short_text` first.
 
         Stage 1 must emit parseable JSON. A first sample that truncates or wraps
         the object in prose is common, so retry up to `config.max_attempts` and
@@ -76,7 +74,6 @@ class Observer:
         if isinstance(short_profile, dict):
             # An empty dict renders to a template of "Unknown"/"(none provided)"
             # placeholders, which would expand into a generic invented patient.
-            # the reference demo's /expand treats a falsy profile as no input too.
             if not short_profile:
                 raise ValueError("short_profile is empty")
             text = profile_to_short_text(short_profile).strip()
@@ -107,9 +104,8 @@ class Observer:
                 temperature=temperature if temperature is not None else self.config.temperature,
                 top_p=top_p if top_p is not None else self.config.top_p,
                 do_sample=True,
-                # Thinking stays ON by default: the Observer was GRPO-trained with
-                # the <think> block, and the reference demo does not disable it. The
-                # block is stripped by parse_profile_json afterwards.
+                # Thinking stays on by default: the Observer was GRPO-trained with
+                # the <think> block. parse_profile_json strips it afterwards.
                 enable_thinking=self.config.enable_thinking,
             )
             try:

@@ -68,10 +68,8 @@ def _env_bool(name: str, default: bool) -> bool:
 class ObserverConfig:
     """Stage 1: short profile text -> structured long-profile JSON.
 
-    Defaults from the reference demo: `stage1_short2long.generate_stage1_profile`
-    (max_new_tokens=3072, max_attempts=2, top_p=0.9) and
-    `vllm_backend.VLLMProfileGenerator.generate`, which overrides the nominal
-    temperature of 0.1 with a stable 0.7 unless `apply_temperature` is set.
+    Defaults are the released demo's settings: up to 3072 new tokens, 2
+    attempts, temperature 0.7, top_p 0.9.
     """
 
     model_path: str = field(
@@ -81,10 +79,8 @@ class ObserverConfig:
     temperature: float = field(default_factory=lambda: _env_float("ANGEL_OBSERVER_TEMPERATURE", 0.7))
     top_p: float = field(default_factory=lambda: _env_float("ANGEL_OBSERVER_TOP_P", 0.9))
     max_attempts: int = field(default_factory=lambda: _env_int("ANGEL_OBSERVER_MAX_ATTEMPTS", 2))
-    # the reference demo does NOT disable thinking for stage 1 — VLLMProfileGenerator
-    # passes no chat_template_kwargs, so Qwen3's default (<think> on) applies, and
-    # the comment there is explicit that this keeps "the <think> reasoning that the
-    # Observer was trained with". The JSON extractor strips the block afterwards.
+    # Qwen3 thinking stays on: the Observer was trained with the <think> block.
+    # The JSON extractor strips it afterwards.
     enable_thinking: bool = field(default_factory=lambda: _env_bool("ANGEL_OBSERVER_THINKING", True))
 
 
@@ -92,11 +88,9 @@ class ObserverConfig:
 class ActorConfig:
     """Stage 2: profile + dialogue history -> patient reply.
 
-    Defaults from the reference demo: `stage1_worker.ChatReq` (max_tokens=90 —
-    "ceiling for the dynamic length plan (matches the user-study app)" — and
-    temperature=0.8) plus `vllm_backend.roleplay_reply` (top_p=0.9,
-    repetition_penalty=1.15, no_repeat_ngram_size=3) and the 3-retry regen
-    backstop in `stage1_worker.chat`.
+    Defaults are the released demo's settings: a 90-token ceiling for the
+    per-turn length plan, temperature 0.8, top_p 0.9, repetition_penalty 1.15,
+    no_repeat_ngram_size 3, and up to 3 regenerations of an unusable reply.
     """
 
     model_path: str = field(
@@ -134,12 +128,10 @@ class RunnerConfig:
     # pipeline inside a 40 GB card; keep_both is for larger cards doing batch runs.
     keep_both_resident: bool = field(default_factory=lambda: _env_bool("ANGEL_KEEP_BOTH", False))
     seed: Optional[int] = None
-    # "auto" prefers vLLM and falls back to transformers, matching
-    # the reference demo "vllm" is the engine the reference demo
-    # actually runs; "hf" is transformers; "stub" is a no-GPU fake.
+    # "auto" prefers vLLM and falls back to transformers; "vllm" / "hf" force
+    # one engine; "stub" is a no-GPU fake for tests.
     backend: str = field(default_factory=lambda: _env_str("ANGEL_BACKEND", "auto"))
-    # vLLM engine settings, from the reference demo (VLLM_GPU_MEM=0.4 there
-    # because one worker hosts both models; VLLM_MAX_LEN=8192).
+    # vLLM engine settings (0.4 leaves room for both models on one large GPU).
     vllm_gpu_memory_utilization: float = field(
         default_factory=lambda: _env_float("ANGEL_VLLM_GPU_MEM", 0.4)
     )

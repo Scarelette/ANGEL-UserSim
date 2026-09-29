@@ -216,7 +216,7 @@ class TestActorInputIsObserverOutput(unittest.TestCase):
     def test_expand_of_a_rich_profile_inherits_its_source_title(self):
         model = make_model()
         result = model.expand_profile(load_example())
-        self.assertEqual(result.rich_profile["_meta"]["source_title"], "Custom profile")
+        self.assertEqual(result.rich_profile["_meta"]["source_title"], "Synthetic example profile")
 
     def test_rendered_profile_is_not_dumped_into_background(self):
         """Regression: `short_profile_text` is appended to `background` as one
