@@ -240,26 +240,6 @@ def build_stage2_profile_description_prompt(
     return "\n".join(sections).strip()
 
 
-def build_long_profile_description_prompt(
-    patient_profile_json: Dict[str, Any],
-    target_words: int = 700,
-) -> str:
-    return build_stage2_profile_description_prompt(
-        target_words=target_words,
-        patient_profile_json=patient_profile_json,
-    )
-
-
-def build_raw_profile_description_prompt(
-    raw_profile_text: str,
-    target_words: int = 700,
-) -> str:
-    return build_stage2_profile_description_prompt(
-        target_words=target_words,
-        raw_profile_text=raw_profile_text,
-    )
-
-
 def strip_code_fences(text: str) -> str:
     text = (text or "").strip()
     if text.startswith("```"):

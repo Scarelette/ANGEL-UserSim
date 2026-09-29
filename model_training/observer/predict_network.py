@@ -23,10 +23,6 @@ from angel_common.paths import OUTPUTS_DIR, resolve_model
 from model_training.observer.prompts import build_input_s1, build_input_s2, build_system_prompt_s1, build_system_prompt_s2
 
 
-GRAPH_START = "<GRAPH>"
-GRAPH_END = "</GRAPH>"
-
-
 def extract_symptoms_and_merge(text: str) -> List[str]:
     match = re.search(r"<GRAPH>\s*(\{.*?\})\s*</GRAPH>", text, re.S)
     if not match:

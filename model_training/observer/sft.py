@@ -1,8 +1,6 @@
 """Supervised fine-tuning of the Observer (S1 or S2) with QLoRA.
 
-Reconstructed from the original ``Finetune/finetune_hf.py`` as it was when the
-Observer SFT checkpoints were trained (git history; the file was later
-repurposed for the Actor). Verified against the saved trainer states:
+Settings of the paper runs (checked against their saved trainer states):
 
     S1: Qwen/Qwen3-8B                   + data/observer/sft_training.jsonl    -> Qwen-3-8B-Patient-SFT
         (4 GPUs x bs 4 x grad-acc 4, 3 epochs = 264 steps)
@@ -12,7 +10,8 @@ repurposed for the Actor). Verified against the saved trainer states:
 LoRA r=64, alpha=16, dropout 0.05 on all projection layers; lr 1e-4,
 paged_adamw_32bit, warmup_ratio 0.03. Text format is
 ``### System / ### User / ### Assistant`` (loss on the full sequence).
-The adapter is merged into the 4-bit base and saved (as in the original run).
+The adapter is merged into the 4-bit base and saved, as in the paper runs
+(``--save-adapter-only`` keeps just the adapter).
 
     torchrun --nproc_per_node 4 -m model_training.observer.sft --stage s1 --output models/Qwen-3-8B-Patient-SFT
 """
