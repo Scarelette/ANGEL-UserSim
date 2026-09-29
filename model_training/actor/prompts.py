@@ -3,7 +3,7 @@
 ``generate_system_prompt`` builds the patient role-play prompt from a symptom
 network (visible edges + masked "hidden" edges). ``SFT_SYSTEM_PROMPT`` is the
 graph-free system prompt that replaces it in the SFT/DPO training examples.
-Do not reword these: the released checkpoint was trained on them.
+Do not reword these: the Actor was trained on them.
 """
 
 

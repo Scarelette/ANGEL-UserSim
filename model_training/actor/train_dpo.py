@@ -104,7 +104,7 @@ def main():
     ap.add_argument("--train-file", default=str(DATA_DIR / "actor" / "dpo" / "dpo_training.jsonl"))
     ap.add_argument("--output-dir", default=str(MODELS_DIR / "qwen3-8b-dpo-lora"), help="final DPO LoRA adapter")
     ap.add_argument("--checkpoint-dir", default=str(OUTPUTS_DIR / "actor_dpo"), help="Trainer output_dir")
-    ap.add_argument("--report-to", default="wandb")
+    ap.add_argument("--report-to", default="none", help="'wandb' to log to Weights & Biases")
     ap.add_argument("--no-monitor", action="store_true", help="skip the extra grad-norm / KL W&B callbacks")
     args = ap.parse_args()
 

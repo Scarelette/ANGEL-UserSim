@@ -1,10 +1,8 @@
 """Step 4 — QLoRA SFT of Qwen3-8B on the rollout data -> ``Qwen-3-8B-Patient-SFT-Actor-5``.
 
-Hyperparameters are those of the released adapter (``GRPO-Qwen3/Finetune/
-finetune_hf.py`` @ 4ab9b7e; r/alpha/dropout/targets match the adapter_config
-of the released adapter): 4-bit nf4 base, LoRA r=64 / alpha=16 / dropout=0.05
-on all attention+MLP projections, lr 1e-4, 5 epochs, batch 4 x grad-accum 4,
-paged_adamw_32bit, warmup 3%, bf16.
+Hyperparameters as in the paper: 4-bit nf4 base, LoRA r=64 / alpha=16 /
+dropout=0.05 on all attention+MLP projections, lr 1e-4, 5 epochs, batch 4 x
+grad-accum 4, paged_adamw_32bit, warmup 3%, bf16.
 
     python -m model_training.actor.train_sft \
         --train-file data/actor/sft_training.jsonl \
@@ -113,9 +111,9 @@ def main():
     )
 
     dataset = load_dataset("json", data_files=str(resolve_path(args.train_file)), split="train")
-    # The original keeps the "messages" column next to the new "text" column.
-    # With TRL >= 0.20 a "messages" column makes SFTTrainer treat the data as
-    # conversational (chat template over all turns); see README "Known issues".
+    # The "messages" column is kept next to "text", as in the paper's run. With
+    # TRL >= 0.20 it makes SFTTrainer treat the data as conversational (chat
+    # template over all turns), so "text" is not what is trained on; see README.
     dataset = dataset.map(
         lambda ex: format_messages(ex, tokenizer.eos_token),
         remove_columns=[c for c in dataset.column_names if c != "messages"],

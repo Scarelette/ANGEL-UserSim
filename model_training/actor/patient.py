@@ -2,11 +2,9 @@
 
 * ``PromptedPatient`` — SFT rollouts. A strong instruction model
   (``Qwen/Qwen3-30B-A3B-Instruct-2507`` in the paper) prompted with the
-  symptom-network system prompt. Reconstructed from the version of
-  ``actor/patient_qwen.py`` that produced the SFT data (commit 3865c34 +
-  model override, see README).
+  symptom-network system prompt.
 * ``AdapterPatient`` — DPO rollouts. Qwen3-8B (4-bit) + the SFT LoRA adapter,
-  sampling several candidates per turn (``actor/patient_qwen.py`` @ 652db58).
+  sampling several candidates per turn.
 
 Both render the conversation as plain text (not the chat template).
 """

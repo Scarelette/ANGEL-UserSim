@@ -52,9 +52,7 @@ def _extract_pairs(text: str) -> List[Tuple[str, str]]:
     n = min(len(states), len(words))
     return [(states[i], words[i]) for i in range(n)]
 
-# NOTE:
-# Keep function name to avoid changing arena_new.py imports.
-# Behavior: pick FIRST non-placeholder pair; fallback to LAST pair.
+# Picks the FIRST non-placeholder pair; falls back to the LAST pair.
 def coerce_last_pair(text: str) -> str:
     """
     Force EXACTLY ONE <state> and ONE <word>.
