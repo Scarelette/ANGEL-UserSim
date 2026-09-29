@@ -1,17 +1,12 @@
 """GRPO reward functions for the Observer (TRL ``reward_funcs`` signature).
 
 S1 (nodes):  0.4 * format + 0.6 * node semantic recall vs. GPT-5 reference nodes.
-S2 (edges):  one of three edge rewards
-  - ``azure``       : LLM-judge edge reward (see ``EdgeRewardConfig``):
+S2 (edges):  LLM-judge edge reward (gpt-5-mini; see ``EdgeRewardConfig``):
                         w_format * format + w_precision * precision + w_coverage * coverage
                         − soft size penalty
                       precision = mean judge plausibility of the proposed edges in [-1, 1]
                       (edges that break the rules score -1 without a judge call);
                       coverage  = share of listed nodes joined by a supported edge, in [-1, 1]
-  - ``local``       : 0.3 * format + 0.5 * local Qwen3-0.6B Yes/No classifier score
-  - ``format_only`` : 0.3 * format (clipped to [-0.5, 0.5]); optionally dumps every
-                      proposed edge to JSONL — used to harvest edges for the
-                      edge-classifier training data.
 
 Group-relative normalisation of the final reward is left to GRPO itself, so
 edge scores are *not* normalised inside a rollout: the edge term is the raw
@@ -354,135 +349,5 @@ def symptom_graph_reward_s2_azure(
                 - parts["size_penalty"]
             )
         return np.array(rewards, dtype=np.float32).tolist()
-
-    return reward_fn
-
-
-# --------------------------------------------------------------------------- #
-# S2 (local): Qwen3-0.6B Yes/No edge classifier
-# --------------------------------------------------------------------------- #
-def _edge_cache_key(complaints: str, edges: List[Dict[str, str]]) -> str:
-    payload = {
-        "complaints": complaints,
-        "edges": [
-            {"from": e["from"], "to": e["to"]}
-            for e in edges
-            if isinstance(e, dict) and "from" in e and "to" in e
-        ],
-    }
-    s = json.dumps(payload, sort_keys=True, ensure_ascii=False)
-    return hashlib.sha256(s.encode("utf-8")).hexdigest()
-
-
-def symptom_graph_reward_s2_local(match_regex, model, tokenizer) -> Callable:
-    """Local-classifier edge reward. Each rank scores its own completions (DDP-safe)."""
-    import torch
-
-    yes_ids = tokenizer.encode("Yes", add_special_tokens=False)
-    no_ids = tokenizer.encode("No", add_special_tokens=False)
-    assert len(yes_ids) == 1 and len(no_ids) == 1, "Yes/No must be single tokens"
-    yes_token_id, no_token_id = yes_ids[0], no_ids[0]
-    edge_cache: Dict[str, float] = {}
-
-    def edge_score(complaint: str, edges: List[Dict[str, str]]) -> float:
-        if not edges:
-            return -1.0
-        key = _edge_cache_key(complaint, edges)
-        if key in edge_cache:
-            return edge_cache[key]
-        device = next(model.parameters()).device
-        total, valid = 0.0, 0
-        for e in edges:
-            if "from" not in e or "to" not in e:
-                continue
-            prompt = (
-                f"This is the Presenting Complaints of the mental health patient:\n"
-                f"{complaint}\n\n"
-                f"Based on the patient's symptoms, I construct a symptom relationship:\n"
-                f"- {e['from']} -> {e['to']}\n\n"
-                f"Does this link make sense according to the presenting complaints?\n"
-                f"Answer with exactly one word: Yes or No.\nAnswer:"
-            )
-            try:
-                inputs = tokenizer(prompt, return_tensors="pt", truncation=True).to(device)
-                with torch.inference_mode(), torch.autocast("cuda", dtype=torch.bfloat16):
-                    last_logits = model(**inputs).logits[:, -1, :]
-                diff = last_logits[0, yes_token_id] - last_logits[0, no_token_id]
-                total += torch.tanh(diff / 5.0).item()  # -> [-1, 1]
-                valid += 1
-            except Exception:
-                continue
-        score = total / valid if valid else 0.0
-        edge_cache[key] = score
-        return score
-
-    def compute(completions, complaints) -> List[float]:
-        rewards = []
-        for completion, complaint in zip(completions, complaints):
-            json_str = _match_json(match_regex, completion[0]["content"])
-            if json_str is None:
-                rewards.append(-1.0)
-                continue
-            try:
-                edges = json.loads(json_str).get("links", [])
-            except Exception:
-                rewards.append(-1.0)
-                continue
-            r_format = format_reward_s2(json_str)
-            if r_format < 0:
-                rewards.append(r_format)
-                continue
-            rewards.append(0.3 * r_format + 0.5 * edge_score(complaint, edges))
-        return rewards
-
-    def reward_fn(prompts, completions, complaints, **kwargs):
-        return compute(completions, complaints)
-
-    return reward_fn
-
-
-# --------------------------------------------------------------------------- #
-# S2 (format_only): edge harvesting for classifier data
-# --------------------------------------------------------------------------- #
-def symptom_graph_reward_s2_format_only(match_regex, edge_dump_path: Optional[str] = None) -> Callable:
-    """Format-only S2 reward; rank 0 appends every proposed edge to ``edge_dump_path``.
-
-    Dump rows: {complaint, from, to, model_output, step, reward_format} — the
-    input format of ``edge_classifier_data.py label``.
-    """
-
-    def is_rank_0():
-        import torch.distributed as dist
-
-        return (not dist.is_initialized()) or dist.get_rank() == 0
-
-    def reward_fn(prompts, completions, complaints, **kwargs):
-        rewards = []
-        step = kwargs.get("step", -1)
-        for completion, complaint in zip(completions, complaints):
-            text = completion[0]["content"]
-            json_str = _match_json(match_regex, text)
-            if json_str is None:
-                rewards.append(-1.0)
-                continue
-            try:
-                edges = json.loads(json_str).get("links", [])
-            except Exception:
-                rewards.append(-1.0)
-                continue
-            r_format = format_reward_s2(json_str)
-            if r_format < 0:
-                rewards.append(r_format)
-                continue
-            if edge_dump_path and is_rank_0():
-                with open(edge_dump_path, "a", encoding="utf-8") as f:
-                    for e in edges:
-                        if "from" in e and "to" in e:
-                            f.write(json.dumps({
-                                "complaint": complaint, "from": e["from"], "to": e["to"],
-                                "model_output": text, "step": step, "reward_format": r_format,
-                            }, ensure_ascii=False) + "\n")
-            rewards.append(max(min(0.3 * r_format, 0.5), -0.5))
-        return rewards
 
     return reward_fn

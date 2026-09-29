@@ -2,9 +2,8 @@
 
 In the paper this is a GPT-4 model fine-tuned (via Azure OpenAI fine-tuning) on
 the human edge annotations produced by ``edge_classifier_data.py
-from-annotations``. It is used (a) to label GRPO-harvested edges for distilling
-the local Qwen3-0.6B classifier and (b) as the edge "reasonability" judge in
-the automatic profile evaluation (``eval/score_network_edges.py``).
+from-annotations``. It is the edge "reasonability" judge in the automatic
+profile evaluation (``eval/score_network_edges.py``).
 
 Configure with ANGEL_EDGE_CLASSIFIER_DEPLOYMENT (required) and optionally
 ANGEL_EDGE_CLASSIFIER_ENDPOINT / _API_KEY / _API_VERSION (fallback AZURE_OPENAI_*).

@@ -8,8 +8,8 @@ adapter (``--init-adapter``). Launch with torchrun / accelerate for multi-GPU:
 
 Defaults per stage reproduce the paper runs (4 GPUs):
     S1: lr 5e-6, 4 prompts x 8 generations / device, LoRA r=16 alpha=32
-    S2: lr 1e-5, 4 prompts x 4 generations / device, LoRA r=32 alpha=64
-        (local-classifier runs used 6 x 6 on 8 GPUs)
+    S2: lr 1e-5, 4 prompts x 4 generations / device, LoRA r=32 alpha=64,
+        edge reward from the gpt-5-mini judge
 """
 
 from __future__ import annotations
@@ -17,7 +17,7 @@ from __future__ import annotations
 import argparse
 import os
 
-from angel_common.paths import DATA_DIR, MODELS_DIR, OUTPUTS_DIR, resolve_model
+from angel_common.paths import DATA_DIR, MODELS_DIR, OUTPUTS_DIR
 
 STAGE_DEFAULTS = {
     "s1": dict(model=str(MODELS_DIR / "Qwen-3-8B-Patient-SFT"), lr=5e-6, num_generations=8, lora_r=16, lora_alpha=32),
@@ -50,16 +50,11 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--chat-template", choices=["original", "fixed", "native"], default="original",
                    help="'original' reproduces the released runs (see README, Known issues).")
     # S2 reward
-    p.add_argument("--reward", choices=["azure", "local", "format_only"], default="azure",
-                   help="S2 edge reward. Ignored for S1.")
     p.add_argument("--judge-max-concurrent", type=int, default=3)
-    p.add_argument("--w-format", type=float, default=0.1, help="azure reward: weight of the format term")
-    p.add_argument("--w-precision", type=float, default=0.6, help="azure reward: weight of mean edge plausibility")
-    p.add_argument("--w-coverage", type=float, default=0.3, help="azure reward: weight of node coverage")
-    p.add_argument("--max-edges", type=int, default=10, help="azure reward: edges beyond this are penalised")
-    p.add_argument("--edge-classifier-model", default=None,
-                   help="local reward: Yes/No classifier (default: resolve_model('edge_classifier')).")
-    p.add_argument("--edge-dump", default=None, help="format_only reward: append proposed edges to this JSONL.")
+    p.add_argument("--w-format", type=float, default=0.1, help="S2 reward: weight of the format term")
+    p.add_argument("--w-precision", type=float, default=0.6, help="S2 reward: weight of mean edge plausibility")
+    p.add_argument("--w-coverage", type=float, default=0.3, help="S2 reward: weight of node coverage")
+    p.add_argument("--max-edges", type=int, default=10, help="S2 reward: edges beyond this are penalised")
     args = p.parse_args()
 
     d = STAGE_DEFAULTS[args.stage]
@@ -79,40 +74,19 @@ def build_reward(args, match_regex):
     if args.stage == "s1":
         return rewards.symptom_graph_reward_s1(match_regex)
 
-    if args.reward == "azure":
-        from model_training.observer.clients import azure_client_for_role, edge_judge_deployment
+    from model_training.observer.clients import azure_client_for_role, edge_judge_deployment
 
-        engine = rewards.AzureAsyncRewardEngine(
-            client=azure_client_for_role("edge_judge", async_client=True),
-            deployment_name=edge_judge_deployment(),
-            max_concurrent=args.judge_max_concurrent,
-            max_retries=5,
-        )
-        cfg = rewards.EdgeRewardConfig(
-            w_format=args.w_format, w_precision=args.w_precision,
-            w_coverage=args.w_coverage, max_edges=args.max_edges,
-        )
-        return rewards.symptom_graph_reward_s2_azure(match_regex, engine, cfg)
-
-    if args.reward == "local":
-        import torch
-        from transformers import AutoModelForCausalLM, AutoTokenizer
-
-        path = resolve_model("edge_classifier", args.edge_classifier_model)
-        rtok = AutoTokenizer.from_pretrained(path, trust_remote_code=True)
-        rtok.pad_token = rtok.eos_token
-        rmodel = AutoModelForCausalLM.from_pretrained(
-            path,
-            torch_dtype=torch.bfloat16,
-            device_map={"": int(os.environ.get("LOCAL_RANK", 0))},
-            trust_remote_code=True,
-        )
-        rmodel.eval()
-        for param in rmodel.parameters():
-            param.requires_grad_(False)
-        return rewards.symptom_graph_reward_s2_local(match_regex, rmodel, rtok)
-
-    return rewards.symptom_graph_reward_s2_format_only(match_regex, edge_dump_path=args.edge_dump)
+    engine = rewards.AzureAsyncRewardEngine(
+        client=azure_client_for_role("edge_judge", async_client=True),
+        deployment_name=edge_judge_deployment(),
+        max_concurrent=args.judge_max_concurrent,
+        max_retries=5,
+    )
+    cfg = rewards.EdgeRewardConfig(
+        w_format=args.w_format, w_precision=args.w_precision,
+        w_coverage=args.w_coverage, max_edges=args.max_edges,
+    )
+    return rewards.symptom_graph_reward_s2_azure(match_regex, engine, cfg)
 
 
 def main() -> None:

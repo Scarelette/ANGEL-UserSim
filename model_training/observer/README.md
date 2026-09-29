@@ -36,10 +36,10 @@ cp .env.example .env        # then fill in the values below — the only place t
 
 | Variable | Needed for | Default |
 |---|---|---|
-| `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_KEY` | GPT-5 data building, the S2 edge judge, the edge classifier | — |
+| `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_KEY` | GPT-5 data building, the S2 edge judge, the `eval/` edge classifier | — |
 | `ANGEL_GPT5_DEPLOYMENT` | GPT-5 (data building, long-profile prose in `eval/`) | `gpt-5` |
 | `ANGEL_EDGE_JUDGE_DEPLOYMENT` | S2 GRPO edge judge | `gpt-5-mini` |
-| `ANGEL_EDGE_CLASSIFIER_DEPLOYMENT` | your fine-tuned edge classifier (labelling, `eval/`) | — (no public default) |
+| `ANGEL_EDGE_CLASSIFIER_DEPLOYMENT` | your fine-tuned edge classifier (`eval/`) | — (no public default) |
 | `ANGEL_BASE_MODEL` | base model | `Qwen/Qwen3-8B` |
 | `ANGEL_OBSERVER_MODEL` | Observer for `predict_network` and `eval/` | `models/Qwen3-Observer-800` |
 
@@ -87,7 +87,7 @@ torchrun --nproc_per_node 4 -m model_training.observer.sft --stage s2 \
     --base-model models/Qwen-3-8B-GRPO-600-S1-merged --output models/Qwen-3-8B-Patient-SFT-S2
 
 # 5. GRPO S2, 8 × 100 steps
-G="torchrun --nproc_per_node 4 -m model_training.observer.train_grpo --stage s2 --reward azure"
+G="torchrun --nproc_per_node 4 -m model_training.observer.train_grpo --stage s2"
 $G --adapter-out models/Qwen-3-8B-GRPO-s2-100
 for s in 200 300 400 500 600 700 800; do
   $G --init-adapter models/Qwen-3-8B-GRPO-s2-$((s-100)) --adapter-out models/Qwen-3-8B-GRPO-s2-$s
@@ -121,12 +121,6 @@ The weights can be set with `--w-format`, `--w-precision` and `--w-coverage`.
 - **Size penalty** is 0.05 per edge beyond `--max-edges` (10), capped at 0.3.
 - **Consistency:** judge scores are cached per (complaints, edge), so every generation of a prompt is compared on the same scores.
 
-Other stage-2 rewards:
-- `--reward local`: uses the Qwen3-0.6B edge classifier instead of the judge.
-  Tried in the paper, but not used for the released model: `Qwen3-Observer-800`
-  was trained with the gpt-5-mini judge.
-- `--reward format_only --edge-dump FILE`: collects proposed edges to use as classifier training data.
-
 **Build a network with a trained Observer:**
 
 ```bash
@@ -134,12 +128,18 @@ python -m model_training.observer.predict_network --input data/examples/observer
     --input-field Complaints --output outputs/observer/networks.jsonl
 ```
 
-## Edge classifiers (optional)
+## Edge classifier (for `eval/`)
 
-| Classifier | How it is built | Used for |
-|---|---|---|
-| Azure fine-tuned GPT-4 | `edge_classifier_data from-annotations --annotation-dir <csvs>`, then Azure fine-tuning | labelling edges; the "reasonability" score in `eval/` |
-| Qwen3-0.6B (`Qwen3-0.6B-Classifier`) | `edge_classifier_data label` → `to-sft` → `train_edge_classifier` | `--reward local` |
+The evaluation's "reasonability" score comes from a Yes/No edge classifier: a
+GPT-4 deployment fine-tuned on human edge annotations with Azure OpenAI.
+`edge_classifier_data` builds the fine-tuning data from the annotation CSVs:
+
+```bash
+python -m model_training.observer.edge_classifier_data from-annotations --annotation-dir <csvs>
+```
+
+Run the fine-tuning in Azure, then set `ANGEL_EDGE_CLASSIFIER_DEPLOYMENT` to the
+deployment's name.
 
 ## Automatic profile evaluation (`eval/`)
 
@@ -188,9 +188,6 @@ by default.
    `--save-adapter-only`, then `merge` onto a bf16 base.
 5. **Repeated GRPO cases.** GRPO data repeats each of the 510 cases about 10
    times: the paraphrased rows carry the original complaints.
-6. **Edge-classifier training.** The classifier text has no `### Assistant:`
-   marker, so loss covers the whole sequence. The local-reward prompt also
-   differs from the classifier's training format.
 
 ## Data
 
@@ -199,4 +196,4 @@ case reports, which are copyrighted:
 - 510 case reports with presenting complaints;
 - 5599 stage-1 and 2138 stage-2 SFT rows;
 - 5089 GRPO prompts;
-- 8316 labelled edges, plus human edge annotations.
+- human edge annotations (for the edge classifier).

@@ -52,13 +52,12 @@ Run every command from the repository root (`python -m <module>`).
 |---|---|---|---|---|
 | Observer (stage 1) | `Qwen3-Observer-800` | 16 GB (bf16) | Qwen/Qwen3-8B | *TBA* |
 | Actor (stage 2) | `qwen3-8b-dpo-merged` | 16 GB (bf16) | Qwen/Qwen3-8B | *TBA* |
-| Edge classifier (optional GRPO reward) | `Qwen3-0.6B-Classifier` | 0.8 GB | Qwen/Qwen3-0.6B | *TBA* |
 
 No code contains an absolute path. A model is found by trying, in order:
 
 1. the `--…-model` command-line flag;
 2. the environment variable (`ANGEL_OBSERVER_MODEL`, `ANGEL_ACTOR_MODEL`,
-   `ANGEL_EDGE_CLASSIFIER_MODEL`, `ANGEL_BASE_MODEL`, `EEYORE_MODEL`);
+   `ANGEL_BASE_MODEL`, `EEYORE_MODEL`);
 3. `models/<directory name>` inside the repo;
 4. a Hugging Face Hub id.
 

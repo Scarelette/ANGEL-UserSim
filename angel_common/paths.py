@@ -35,8 +35,6 @@ MODEL_REGISTRY: Dict[str, Tuple[str, str, str]] = {
     "observer": ("ANGEL_OBSERVER_MODEL", "Qwen3-Observer-800", "Qwen3-Observer-800"),
     # Stage 2: SFT + DPO Qwen3-8B patient role-play model.
     "actor": ("ANGEL_ACTOR_MODEL", "qwen3-8b-dpo-merged", "qwen3-8b-dpo-merged"),
-    # Qwen3-0.6B Yes/No edge-plausibility classifier (optional local GRPO reward).
-    "edge_classifier": ("ANGEL_EDGE_CLASSIFIER_MODEL", "Qwen3-0.6B-Classifier", "Qwen3-0.6B-Classifier"),
     # Public base / baseline models.
     "base": ("ANGEL_BASE_MODEL", "Qwen3-8B", "Qwen/Qwen3-8B"),
     "eeyore": (

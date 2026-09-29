@@ -1,16 +1,9 @@
-"""Build training data for the Yes/No edge-plausibility classifiers.
+"""Fine-tuning data for the Yes/No edge-plausibility classifier.
 
-Pipeline used in the paper:
-
-1. ``from-annotations``: human-annotated edge CSVs -> chat JSONL. This data was
-   used to fine-tune a GPT-4 deployment on Azure OpenAI (done in the Azure
-   portal / fine-tuning API; not scripted here).
-2. Harvest candidate edges by running S2 GRPO with ``--reward format_only
-   --edge-dump edge_dump_s2.jsonl`` (see train_grpo.py).
-3. ``label``: label each harvested edge with the Azure fine-tuned classifier
-   (edge_classifier_api.py) -> predicted_edges.jsonl.
-4. ``to-sft``: keep only the chat messages -> classifier_sft.jsonl, the
-   training set for train_edge_classifier.py (Qwen3-0.6B).
+``from-annotations`` turns the human-annotated edge CSVs into chat JSONL. The
+paper fine-tuned a GPT-4 deployment on it with Azure OpenAI fine-tuning (done in
+the Azure portal / fine-tuning API; not scripted here). The resulting classifier
+(edge_classifier_api.py) gives the edge "reasonability" score in ``eval/``.
 
 Annotation CSV columns: ``complaints`` (only on the first row of each case;
 later rows inherit it), ``parent node``, ``child node``, ``Annotation`` (Yes/No).
@@ -68,54 +61,6 @@ def from_annotations(annotation_dir: str, output: str) -> None:
     print(f"Wrote {n} annotated edges to {output}")
 
 
-def label(edge_dump: str, output: str, start: int, end: int | None) -> None:
-    """Label harvested edges with the Azure fine-tuned classifier; resumable (appends)."""
-    from tqdm import tqdm
-
-    from model_training.observer.edge_classifier_api import build_edge_prompt, classifier, extract_label
-
-    with open(edge_dump, "r", encoding="utf-8") as f:
-        rows = [json.loads(line) for line in f if line.strip()]
-
-    done = 0
-    if os.path.exists(output):
-        with open(output, "r", encoding="utf-8") as f:
-            done = sum(1 for _ in f)
-    print(f"Skipping the first {done} rows already in {output}")
-
-    Path(output).parent.mkdir(parents=True, exist_ok=True)
-    with open(output, "a", encoding="utf-8") as writer:
-        for i, sample in enumerate(tqdm(rows)):
-            if i < start + done or (end is not None and i > end):
-                continue
-            prompt = build_edge_prompt(sample["complaint"], sample["from"], sample["to"])
-            try:
-                output_text = classifier(prompt)
-            except Exception as e:
-                print(f"[Error @ {i}] {e}")
-                output_text = ""
-            pred = extract_label(output_text).strip()
-            record = {
-                "complaint": sample["complaint"],
-                "edge": {"from": sample["from"], "to": sample["to"]},
-                "label": pred,
-                **_messages(prompt, pred),
-            }
-            writer.write(json.dumps(record, ensure_ascii=False) + "\n")
-            if i % 5 == 0:
-                writer.flush()
-
-
-def to_sft(predicted: str, output: str) -> None:
-    n = 0
-    with open(predicted, "r", encoding="utf-8") as fin, open(output, "w", encoding="utf-8") as fout:
-        for line in fin:
-            if line.strip():
-                fout.write(json.dumps({"messages": json.loads(line)["messages"]}, ensure_ascii=False) + "\n")
-                n += 1
-    print(f"Wrote {n} rows to {output}")
-
-
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -124,23 +69,8 @@ def main() -> None:
     a.add_argument("--annotation-dir", required=True)
     a.add_argument("--output", default=str(DATA_DIR / "observer" / "classifier_annotations.jsonl"))
 
-    b = sub.add_parser("label")
-    b.add_argument("--edge-dump", default=str(DATA_DIR / "observer" / "edge_dump_s2.jsonl"))
-    b.add_argument("--output", default=str(DATA_DIR / "observer" / "predicted_edges.jsonl"))
-    b.add_argument("--start", type=int, default=0)
-    b.add_argument("--end", type=int, default=None, help="Last row index to label (inclusive).")
-
-    c = sub.add_parser("to-sft")
-    c.add_argument("--predicted", default=str(DATA_DIR / "observer" / "predicted_edges.jsonl"))
-    c.add_argument("--output", default=str(DATA_DIR / "observer" / "classifier_sft.jsonl"))
-
     args = p.parse_args()
-    if args.cmd == "from-annotations":
-        from_annotations(args.annotation_dir, args.output)
-    elif args.cmd == "label":
-        label(args.edge_dump, args.output, args.start, args.end)
-    else:
-        to_sft(args.predicted, args.output)
+    from_annotations(args.annotation_dir, args.output)
 
 
 if __name__ == "__main__":
