@@ -36,14 +36,14 @@ cp .env.example .env        # then fill in the values below — the only place t
 
 | Variable | Needed for | Default |
 |---|---|---|
-| `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_KEY` | GPT-5 data building, the S2 edge judge, the `eval/` edge classifier | — |
+| `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_KEY` | GPT-5 data building, the S2 edge judge | — |
 | `ANGEL_GPT5_DEPLOYMENT` | GPT-5 (data building, long-profile prose in `eval/`) | `gpt-5` |
 | `ANGEL_EDGE_JUDGE_DEPLOYMENT` | S2 GRPO edge judge | `gpt-5-mini` |
-| `ANGEL_EDGE_CLASSIFIER_DEPLOYMENT` | your fine-tuned edge classifier (`eval/`) | — (no public default) |
 | `ANGEL_BASE_MODEL` | base model | `Qwen/Qwen3-8B` |
 | `ANGEL_OBSERVER_MODEL` | Observer for `predict_network` and `eval/` | `models/Qwen3-Observer-800` |
 
 Optional:
+- `ANGEL_EDGE_CLASSIFIER_DEPLOYMENT`: only for the "reasonability" score in `eval/`; the name of your fine-tuned edge-classifier deployment (see [Edge classifier](#edge-classifier-for-eval)).
 - `ANGEL_EDGE_JUDGE_*` / `ANGEL_EDGE_CLASSIFIER_*` `_ENDPOINT` and `_API_KEY`, if those models live on another Azure resource.
 - `ANTHROPIC_API_KEY` and `GOOGLE_CLOUD_PROJECT`, for the Claude and Gemini baselines in `eval/`.
 - `--wandb-project` plus `WANDB_API_KEY`, for W&B logging.
