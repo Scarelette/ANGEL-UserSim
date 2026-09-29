@@ -99,12 +99,14 @@ class RunnerConfig:
         if need_observer and not _looks_loadable(self.observer.model_path):
             problems.append(
                 f"observer model not found: {self.observer.model_path}\n"
-                "    set ANGEL_OBSERVER_MODEL or pass --observer-model"
+                "    export ANGEL_OBSERVER_MODEL=/path/to/Qwen3-Observer-800 (or put it in .env),\n"
+                "    or pass --observer-model"
             )
         if need_actor and not _looks_loadable(self.actor.model_path):
             problems.append(
                 f"actor model not found: {self.actor.model_path}\n"
-                "    set ANGEL_ACTOR_MODEL or pass --actor-model"
+                "    export ANGEL_ACTOR_MODEL=/path/to/qwen3-8b-dpo-merged (or put it in .env),\n"
+                "    or pass --actor-model"
             )
         return problems
 

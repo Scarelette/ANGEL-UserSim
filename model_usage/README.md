@@ -22,13 +22,22 @@ loads, so one 40 GB GPU is enough.
 pip install -r model_usage/requirements-usage.txt
 ```
 
-Put the weights under `models/` (see the top-level README), or set their
-paths in `.env`:
+Put the weights under `models/` (see the top-level README), or point to them,
+either in `<repo>/.env`:
 
-```bash
+```
 ANGEL_OBSERVER_MODEL=/path/to/Qwen3-Observer-800
 ANGEL_ACTOR_MODEL=/path/to/qwen3-8b-dpo-merged
 ```
+
+or in your shell (note the `export`; without it Python does not see them):
+
+```bash
+export ANGEL_OBSERVER_MODEL=/path/to/Qwen3-Observer-800
+export ANGEL_ACTOR_MODEL=/path/to/qwen3-8b-dpo-merged
+```
+
+Run on a machine with a GPU.
 
 No API keys are needed.
 
