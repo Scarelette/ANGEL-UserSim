@@ -1,17 +1,14 @@
-"""Merge a LoRA adapter into a base model and save a standalone checkpoint.
+"""Merge a LoRA adapter into the model it was trained on and save a bf16 checkpoint.
 
-Paper lineage (see README):
+Always pass the model the adapter was trained on as ``--base``:
 
-  S1:  python -m model_training.observer.merge --base Qwen/Qwen3-8B \
-           --adapter models/Qwen-3-8B-GRPO-600 --output models/Qwen-3-8B-GRPO-600-S1-merged
-  S2:  python -m model_training.observer.merge --base models/Qwen-3-8B-Patient-SFT-S2 \
-           --adapter models/Qwen-3-8B-GRPO-s2-set2-800-gpt --output models/Qwen3-Observer-800 \
-           --device cpu --rebuild-clean
+  SFT S1:   --base Qwen/Qwen3-8B                        --adapter models/Qwen-3-8B-Patient-SFT-lora
+  GRPO S1:  --base models/Qwen-3-8B-Patient-SFT         --adapter models/Qwen-3-8B-GRPO-600
+  SFT S2:   --base models/Qwen-3-8B-GRPO-600-S1-merged  --adapter models/Qwen-3-8B-Patient-SFT-S2-lora
+  GRPO S2:  --base models/Qwen-3-8B-Patient-SFT-S2      --adapter models/Qwen-3-8B-GRPO-s2-800
 
-Note the S1 merge onto ``Qwen/Qwen3-8B`` although the S1 GRPO adapter was
-trained on top of ``Qwen-3-8B-Patient-SFT`` — this is what the original merge
-script did (README, Known issues). Pass ``--base models/Qwen-3-8B-Patient-SFT``
-to merge onto the model the adapter was trained against.
+The base is loaded in bf16, so the result is a full-precision model. The script
+refuses to save if the adapter did not change the weights.
 """
 
 from __future__ import annotations
@@ -39,8 +36,14 @@ def main() -> None:
     print("Loading base:", args.base)
     model = AutoModelForCausalLM.from_pretrained(args.base, torch_dtype=torch.bfloat16, device_map=args.device)
     print("Loading adapter:", args.adapter)
+    probe = "model.layers.0.self_attn.q_proj.weight"
+    before = model.state_dict()[probe].detach().float().cpu().clone()
     model = PeftModel.from_pretrained(model, args.adapter)
     model = model.merge_and_unload()
+    delta = (model.state_dict()[probe].detach().float().cpu() - before).norm().item()
+    print(f"|dW| on {probe}: {delta:.6f}")
+    if delta == 0.0:
+        raise SystemExit(f"Merging {args.adapter} did not change the weights; refusing to save.")
     model.config.model_type = "qwen3"
     model.config.architectures = ["Qwen3ForCausalLM"]
 

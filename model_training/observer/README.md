@@ -13,14 +13,24 @@ then GRPO. The same model expands short patient profiles into long ones for the
 Actor (`model_usage/`).
 
 ```
-Qwen/Qwen3-8B ─SFT S1─► Qwen-3-8B-Patient-SFT ─GRPO S1, 6×100 steps─► LoRA Qwen-3-8B-GRPO-600
-                                                                        │ merge onto Qwen/Qwen3-8B
-                                                                        ▼
-                     Qwen-3-8B-Patient-SFT-S2 ◄─SFT S2── Qwen-3-8B-GRPO-600-S1-merged
-                              │ GRPO S2, 8×100 steps (LLM edge judge)
-                              ▼ merge
-                     Qwen3-Observer-800
+Qwen/Qwen3-8B
+  │ SFT S1 + merge
+  ▼
+Qwen-3-8B-Patient-SFT
+  │ GRPO S1 (6×100 steps) + merge
+  ▼
+Qwen-3-8B-GRPO-600-S1-merged
+  │ SFT S2 + merge
+  ▼
+Qwen-3-8B-Patient-SFT-S2
+  │ GRPO S2 (8×100 steps, gpt-5-mini edge judge) + merge
+  ▼
+Qwen3-Observer-800
 ```
+
+Each step trains a LoRA adapter (on a 4-bit copy of the model) and then
+`merge` applies it to the model it was trained on, giving a full-precision
+(bf16) model for the next step.
 
 Each GRPO run is 100 steps and resumes the previous run's LoRA, so `-600` and
 `-800` are cumulative steps. The paper used 4 GPUs throughout.
@@ -73,8 +83,10 @@ $M make-sft --stage s1            # sft_training.jsonl     (paper: 5599 rows)
 $M make-sft --stage s2            # sft_training_s2.jsonl  (paper: 2138 rows)
 $M make-grpo                      # grpo_training.jsonl    (paper: 5089 rows)
 
-# 1. SFT S1
-torchrun --nproc_per_node 4 -m model_training.observer.sft --stage s1 --output models/Qwen-3-8B-Patient-SFT
+# 1. SFT S1, then merge onto Qwen3-8B
+torchrun --nproc_per_node 4 -m model_training.observer.sft --stage s1 --output models/Qwen-3-8B-Patient-SFT-lora
+python -m model_training.observer.merge --base Qwen/Qwen3-8B \
+    --adapter models/Qwen-3-8B-Patient-SFT-lora --output models/Qwen-3-8B-Patient-SFT
 
 # 2. GRPO S1, 6 × 100 steps
 G="torchrun --nproc_per_node 4 -m model_training.observer.train_grpo --stage s1"
@@ -83,13 +95,15 @@ for s in 200 300 400 500 600; do
   $G --init-adapter models/Qwen-3-8B-GRPO-$((s-100)) --adapter-out models/Qwen-3-8B-GRPO-$s
 done
 
-# 3. merge S1
-python -m model_training.observer.merge --base Qwen/Qwen3-8B \
+# 3. merge the S1 GRPO adapter onto the SFT model it was trained on
+python -m model_training.observer.merge --base models/Qwen-3-8B-Patient-SFT \
     --adapter models/Qwen-3-8B-GRPO-600 --output models/Qwen-3-8B-GRPO-600-S1-merged
 
-# 4. SFT S2
+# 4. SFT S2, then merge
 torchrun --nproc_per_node 4 -m model_training.observer.sft --stage s2 \
-    --base-model models/Qwen-3-8B-GRPO-600-S1-merged --output models/Qwen-3-8B-Patient-SFT-S2
+    --base-model models/Qwen-3-8B-GRPO-600-S1-merged --output models/Qwen-3-8B-Patient-SFT-S2-lora
+python -m model_training.observer.merge --base models/Qwen-3-8B-GRPO-600-S1-merged \
+    --adapter models/Qwen-3-8B-Patient-SFT-S2-lora --output models/Qwen-3-8B-Patient-SFT-S2
 
 # 5. GRPO S2, 8 × 100 steps
 G="torchrun --nproc_per_node 4 -m model_training.observer.train_grpo --stage s2"
@@ -141,27 +155,23 @@ and `model_usage`. The Observer answers with `<think>…</think>` reasoning, the
 the `<GRAPH>` JSON. Each stage-1 SFT answer is paired with the complaints GPT-5
 answered: the original text, or its paraphrase for augmented rows.
 
-The paper's runs differed in two ways:
+The paper's runs differed in four ways, all fixed here:
 - they used a `### System/User/Assistant` format for SFT and a broken template
   for GRPO;
-- they paired paraphrase-based answers with the original complaints.
+- they paired paraphrase-based answers with the original complaints;
+- they merged each SFT adapter into its 4-bit training copy, giving 4-bit
+  models;
+- they merged the S1 GRPO adapter onto plain Qwen3-8B instead of the SFT model
+  it was trained on.
 
-This code fixes both, so retraining with it is expected to differ slightly from
-the released checkpoint.
+Retraining with this code is therefore expected to differ from the released
+checkpoint.
 
 ## Known issues
 
-These are kept as in the paper's runs. Where a flag fixes an issue, it is off
-by default.
-
-1. **Stage-1 merge base.** The S1 GRPO adapter was trained on
-   `Qwen-3-8B-Patient-SFT` but merged onto `Qwen/Qwen3-8B`. Fix: pass
-   `--base models/Qwen-3-8B-Patient-SFT` to merge onto the model it was trained
-   on.
-2. **4-bit SFT merges.** `sft` merges into the 4-bit base. Fix:
-   `--save-adapter-only`, then `merge` onto a bf16 base.
-3. **Repeated GRPO cases.** GRPO data repeats each of the 510 cases about 10
-   times: the paraphrased rows carry the original complaints.
+1. **Repeated GRPO cases.** GRPO data repeats each of the 510 cases about 10
+   times: the paraphrased rows carry the original complaints. Kept as in the
+   paper's runs.
 
 ## Data
 

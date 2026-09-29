@@ -1,20 +1,20 @@
 """Supervised fine-tuning of the Observer (S1 or S2) with QLoRA.
 
-Settings of the paper runs (checked against their saved trainer states):
-
-    S1: Qwen/Qwen3-8B                   + data/observer/sft_training.jsonl    -> Qwen-3-8B-Patient-SFT
-        (4 GPUs x bs 4 x grad-acc 4, 3 epochs = 264 steps)
-    S2: Qwen-3-8B-GRPO-600-S1-merged    + data/observer/sft_training_s2.jsonl -> Qwen-3-8B-Patient-SFT-S2
+    S1: Qwen/Qwen3-8B                   + data/observer/sft_training.jsonl
+        (4 GPUs x bs 4 x grad-acc 4, 3 epochs = 264 steps in the paper)
+    S2: Qwen-3-8B-GRPO-600-S1-merged    + data/observer/sft_training_s2.jsonl
         (3 epochs = 102 steps)
 
 LoRA r=64, alpha=16, dropout 0.05 on all projection layers; lr 1e-4,
 paged_adamw_32bit, warmup_ratio 0.03. Examples are rendered with the Qwen3
 chat template, the same format GRPO and inference use (loss on the full
 sequence).
-The adapter is merged into the 4-bit base and saved, as in the paper runs
-(``--save-adapter-only`` keeps just the adapter).
+Training runs on a 4-bit copy of the base (QLoRA), so only the LoRA adapter is
+saved; ``merge`` then applies it to the full-precision base:
 
-    torchrun --nproc_per_node 4 -m model_training.observer.sft --stage s1 --output models/Qwen-3-8B-Patient-SFT
+    torchrun --nproc_per_node 4 -m model_training.observer.sft --stage s1 --output models/Qwen-3-8B-Patient-SFT-lora
+    python -m model_training.observer.merge --base Qwen/Qwen3-8B \
+        --adapter models/Qwen-3-8B-Patient-SFT-lora --output models/Qwen-3-8B-Patient-SFT
 """
 
 from __future__ import annotations
@@ -37,15 +37,13 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--base-model", default=None,
                    help="S1 default: Qwen/Qwen3-8B (ANGEL_BASE_MODEL). S2 default: models/Qwen-3-8B-GRPO-600-S1-merged.")
     p.add_argument("--data", default=None, help="Chat-format JSONL ({'messages': [...]}).")
-    p.add_argument("--output", required=True, help="Directory for the merged SFT model.")
+    p.add_argument("--output", required=True, help="Directory for the SFT LoRA adapter.")
     p.add_argument("--checkpoint-dir", default=str(OUTPUTS_DIR / "observer" / "sft"))
     p.add_argument("--epochs", type=float, default=3)
     p.add_argument("--lr", type=float, default=1e-4)
     p.add_argument("--batch-size", type=int, default=4)
     p.add_argument("--grad-accum", type=int, default=4)
     p.add_argument("--limit", type=int, default=None)
-    p.add_argument("--save-adapter-only", action="store_true",
-                   help="Save the LoRA adapter instead of merging it into the base.")
     args = p.parse_args()
     d = STAGE_DEFAULTS[args.stage]
     args.base_model = args.base_model or (str(d["base"]) if d["base"] else resolve_model("base"))
@@ -130,13 +128,10 @@ def main() -> None:
     trainer.train()
 
     if trainer.is_world_process_zero():
-        if args.save_adapter_only:
-            trainer.model.save_pretrained(args.output)
-        else:
-            merged = trainer.model.merge_and_unload()
-            merged.save_pretrained(args.output, safe_serialization=True, max_shard_size="2GB")
+        # Adapter only: merging into the 4-bit training copy would give a 4-bit model.
+        trainer.model.save_pretrained(args.output)
         tokenizer.save_pretrained(args.output)
-        print(f"Saved to {args.output}")
+        print(f"Saved LoRA adapter to {args.output}")
 
 
 if __name__ == "__main__":
