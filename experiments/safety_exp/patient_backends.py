@@ -126,13 +126,12 @@ class _AngelMessagesAPI:
             (m["content"] for m in reversed(messages) if m.get("role") == "user" and m.get("content")),
             "",
         )
-        result = c.model.send(
-            c.username,
-            latest,
-            session_id=c.session_id,
-            profile_id=c.profile_id,
-            expand=c.expand,
-        )
+        # Pass the profile only on the first turn. Passing it again would make the
+        # Observer re-expand it every turn (with --patient-expand) and restart the
+        # conversation whenever the new expansion differs.
+        profile_kwargs = {} if c.started else {"profile_id": c.profile_id, "expand": c.expand}
+        result = c.model.send(c.username, latest, session_id=c.session_id, **profile_kwargs)
+        c.started = True
         return {"content": [{"type": "text", "text": result["reply"]}]}
 
 
@@ -161,6 +160,7 @@ class InProcessAngelClient:
         self.username = username
         self.session_id = session_id
         self.expand = expand
+        self.started = False
         self.messages = _AngelMessagesAPI(self)
 
     def init_session(self) -> Dict[str, Any]:
