@@ -202,8 +202,12 @@ def cmd_chat(model: AngelModel, args: argparse.Namespace) -> int:
             result = model.send(
                 args.user, message, session_id=args.session_id, **(profile_kwargs(args) if first else {})
             )
+        except (ModuleNotFoundError, FileNotFoundError) as exc:
+            # Setup problems (missing package / model): retrying won't help.
+            print(f"[error] {describe_error(exc)}", file=sys.stderr)
+            return 2
         except Exception as exc:
-            print(f"[error] {exc}", file=sys.stderr)
+            print(f"[error] {describe_error(exc)}", file=sys.stderr)
             continue
         print_reply(result)
         first = False
@@ -211,6 +215,16 @@ def cmd_chat(model: AngelModel, args: argparse.Namespace) -> int:
     model.end(args.user, session_id=args.session_id)
     print("[done] conversation ended.")
     return 0
+
+
+_INSTALL_HINT = "install the requirements first:  pip install -r model_usage/requirements-usage.txt"
+
+
+def describe_error(exc: BaseException) -> str:
+    """Error text for the user, with a fix when we know one."""
+    if isinstance(exc, ModuleNotFoundError):
+        return f"missing Python package '{exc.name}'; {_INSTALL_HINT}"
+    return str(exc)
 
 
 def main(argv: Optional[list] = None) -> int:
@@ -239,8 +253,8 @@ def main(argv: Optional[list] = None) -> int:
             return cmd_say(model, args)
         if args.command == "chat":
             return cmd_chat(model, args)
-    except FileNotFoundError as exc:
-        print(f"[error] {exc}", file=sys.stderr)
+    except (ModuleNotFoundError, FileNotFoundError) as exc:
+        print(f"[error] {describe_error(exc)}", file=sys.stderr)
         return 2
     except (ValueError, KeyError) as exc:
         print(f"[error] {exc}", file=sys.stderr)
