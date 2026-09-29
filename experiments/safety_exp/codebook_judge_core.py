@@ -290,66 +290,6 @@ def extract_json_block(text: str) -> Dict[str, Any]:
     raise ValueError("Could not locate JSON object in model output.")
 
 
-def parse_response_file(path: Path) -> List[ResponseRecord]:
-    records: List[ResponseRecord] = []
-    current: Optional[Dict[str, Any]] = None
-
-    lines = path.read_text(encoding="utf-8-sig").splitlines()
-    for line in lines:
-        if line.startswith("Model:"):
-            if current is not None:
-                response_text = "\n".join(current["response_lines"]).strip()
-                if response_text:
-                    records.append(
-                        ResponseRecord(
-                            source_file=path.name,
-                            source_file_index=len(records) + 1,
-                            model_raw=current["model_raw"],
-                            context_raw=current["context_raw"],
-                            prompt_raw=current["prompt_raw"],
-                            response_text=response_text,
-                        )
-                    )
-            current = {
-                "model_raw": line.split(":", 1)[1].strip(),
-                "context_raw": "",
-                "prompt_raw": "",
-                "response_lines": [],
-                "in_response": False,
-            }
-            continue
-
-        if current is None:
-            continue
-
-        if not current["in_response"] and line.startswith("Context:"):
-            current["context_raw"] = line.split(":", 1)[1].strip()
-            continue
-
-        if not current["in_response"] and line.startswith("Prompt:"):
-            current["prompt_raw"] = line.split(":", 1)[1].strip()
-            continue
-
-        current["in_response"] = True
-        current["response_lines"].append(line)
-
-    if current is not None:
-        response_text = "\n".join(current["response_lines"]).strip()
-        if response_text:
-            records.append(
-                ResponseRecord(
-                    source_file=path.name,
-                    source_file_index=len(records) + 1,
-                    model_raw=current["model_raw"],
-                    context_raw=current["context_raw"],
-                    prompt_raw=current["prompt_raw"],
-                    response_text=response_text,
-                )
-            )
-
-    return records
-
-
 def _extract_first_nonempty_string(obj: Dict[str, Any], keys: List[str]) -> str:
     for key in keys:
         value = obj.get(key)
@@ -559,51 +499,6 @@ def build_judge_prompt(
         prompt_template,
     )
     return prompt.strip()
-
-
-def build_all_judge_prompts(
-    records: List[ResponseRecord],
-    codebook_sections: CodebookPromptSections,
-    prompt_template: str,
-) -> Dict[str, str]:
-    prompts: Dict[str, str] = {}
-    for record in records:
-        prompts[record.stable_key] = build_judge_prompt(
-            codebook_sections=codebook_sections,
-            prompt_template=prompt_template,
-            prompt_name=record.prompt_raw,
-            context_level=record.context_raw,
-            response_text=record.response_text,
-        )
-    return prompts
-
-
-def generate_judge_prompts_from_records(
-    records: List[ResponseRecord],
-    codebook_path: Path,
-    prompt_template_path: Path,
-) -> Dict[str, str]:
-    codebook_sections = load_codebook_sections(codebook_path)
-    prompt_template = load_prompt_template(prompt_template_path)
-    return build_all_judge_prompts(records, codebook_sections, prompt_template)
-
-
-def generate_judge_prompts_from_file(
-    *,
-    input_dir: Path,
-    file_glob: str,
-    codebook_path: Path,
-    prompt_template_path: Path,
-    offset: int = 0,
-    limit: Optional[int] = None,
-) -> Dict[str, str]:
-    records = load_records(input_dir=input_dir, file_glob=file_glob)
-    records = iter_slice(records, offset, limit)
-    return generate_judge_prompts_from_records(
-        records=records,
-        codebook_path=codebook_path,
-        prompt_template_path=prompt_template_path,
-    )
 
 
 def validate_and_normalize_judgment(payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -837,7 +732,6 @@ __all__ = [
     "UNIVERSAL_CODE_ORDER",
     "CodebookPromptSections",
     "ResponseRecord",
-    "build_all_judge_prompts",
     "build_codebook_prompt_sections",
     "build_csv_row",
     "build_judge_prompt",
@@ -849,8 +743,6 @@ __all__ = [
     "default_prompt_template_path",
     "extract_codebook_section",
     "extract_json_block",
-    "generate_judge_prompts_from_file",
-    "generate_judge_prompts_from_records",
     "infer_model_id",
     "iter_slice",
     "load_codebook_sections",
@@ -861,7 +753,6 @@ __all__ = [
     "load_records",
     "normalize_code_key",
     "normalize_key",
-    "parse_response_file",
     "parse_response_jsonl_file",
     "validate_and_normalize_judgment",
     "validate_codebook_text",

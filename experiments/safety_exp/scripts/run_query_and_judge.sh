@@ -35,7 +35,6 @@ for i in ${IDS//,/ }; do
     --run-all-context-levels False \
     --single-context-mode FULL \
     --contexts-dir "$CONTEXTS" \
-    --context-source "$SOURCE" \
     --context-id "$i" \
     --output-jsonl "$OUT/run_all_full_${SOURCE}_profile${i}.jsonl"
 

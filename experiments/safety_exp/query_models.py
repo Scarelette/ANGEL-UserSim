@@ -1,12 +1,12 @@
 """Query commercial LLMs with the safety stimuli, optionally after a context.
 
 For each stimulus prompt (TEST_STIMULI) and context level (NONE / PARTIAL /
-FULL), send the conversation to the selected model and append the response to
+FULL), send the conversation to the selected model and write the response to
 a JSONL file that ``codebook_llm_judge`` scores. FULL context is either the
-source transcript or a generated red-team replay (``--context-source`` +
-``--context-id``, from ``generate_redteam_transcript``).
+source transcript or an auto_attack red-team replay (``--context-id``, from
+``generate_redteam_transcript``).
 
-Originally ``API Script.py``. Run from the repository root:
+Run from the repository root:
     python -m experiments.safety_exp.query_models --help
 """
 
@@ -48,67 +48,21 @@ SAFETY_OUTPUT_DIR = os.path.join(str(OUTPUTS_DIR), "safety_exp")
 CONTEXTS_DIR = os.path.join(SAFETY_OUTPUT_DIR, "contexts")
 FULL_CONTEXT_FILE = os.path.join(SAFETY_DATA_DIR, "full_context.txt")
 PARTIAL_CONTEXT_FILE = os.path.join(SAFETY_DATA_DIR, "partial_context.txt")
-CONTEXT_SOURCE_CHOICES = ("auto_attack",)
-
-# ==============================================================================
-# 1. EXPERIMENT CONFIGURATION
-# ==============================================================================
-
-# --- A. MODEL SELECTION ---
-ACTIVE_MODEL_KEY = "gpt 4o"
-# ACTIVE_MODEL_KEY = "gpt 5.2 chat"
-# ACTIVE_MODEL_KEY = "gemini-3-pro"
-# ACTIVE_MODEL_KEY = "grok 4.1 fast"
-# ACTIVE_MODEL_KEY = "claude 4.5 opus"
-
-# --- B. CONTEXT CONTROL ---
-RUN_ALL_CONTEXT_LEVELS = False
-# RUN_ALL_CONTEXT_LEVELS = True
-
-SINGLE_CONTEXT_MODE = "NONE"
-# SINGLE_CONTEXT_MODE = "PARTIAL"
-# SINGLE_CONTEXT_MODE = "FULL"
-
-# --- C. STIMULUS SELECTION ---
-# If RUN_ALL_PROMPTS is True, every key in TEST_STIMULI is executed.
-RUN_ALL_PROMPTS = False
-# RUN_ALL_PROMPTS = True
-
-# When RUN_ALL_PROMPTS is False, set one prompt key here (or via --prompt-key).
-ACTIVE_PROMPT_KEY = None
-# ACTIVE_PROMPT_KEY = "consciousness"
-# ACTIVE_PROMPT_KEY = "romance"
-# ACTIVE_PROMPT_KEY = "concealment"
-# ACTIVE_PROMPT_KEY = "thought insertion"
-# ACTIVE_PROMPT_KEY = "bizarre delusion"
-# ACTIVE_PROMPT_KEY = "morality"
-# ACTIVE_PROMPT_KEY = "solipsism"
-# ACTIVE_PROMPT_KEY = "experimentation"
-# ACTIVE_PROMPT_KEY = "medication"
-# ACTIVE_PROMPT_KEY = "thought disorder"
-# ACTIVE_PROMPT_KEY = "grandiosity"
-# ACTIVE_PROMPT_KEY = "withdrawal"
-# ACTIVE_PROMPT_KEY = "letter"
-# ACTIVE_PROMPT_KEY = "reality test"
-# ACTIVE_PROMPT_KEY = "safety test"
-# ACTIVE_PROMPT_KEY = "termination"
-
-# --- D. DISPLAY OPTIONS ---
-# SHOW_REASONING_TOKENS = True
-SHOW_REASONING_TOKENS = False
-
 OUTPUT_DIR = os.path.join(SAFETY_OUTPUT_DIR, "results")
-
-# --- E. FULL CONTEXT PROFILE SELECTION ---
-# If set to an integer (e.g., 0, 1, 2), FULL context will load:
-# {CONTEXTS_DIR}/{CONTEXT_SOURCE}/profile_{CONTEXT_ID}.txt
-# If None, FULL context uses FULL_CONTEXT_FILE (data/safety_exp/full_context.txt).
-CONTEXT_ID = None
-# CONTEXT_ID = 0
+# Red-team replays live in {CONTEXTS_DIR}/auto_attack/profile_<id>.txt.
 CONTEXT_SOURCE = "auto_attack"
 
+# Command-line defaults (see parse_cli_args).
+ACTIVE_MODEL_KEY = "gpt 4o"
+SINGLE_CONTEXT_MODE = "NONE"      # NONE | PARTIAL | FULL
+RUN_ALL_CONTEXT_LEVELS = False
+RUN_ALL_PROMPTS = False
+ACTIVE_PROMPT_KEY = None          # one key of TEST_STIMULI when RUN_ALL_PROMPTS is False
+SHOW_REASONING_TOKENS = False
+CONTEXT_ID = None                 # FULL context: None = FULL_CONTEXT_FILE, int = that replay
+
 # ==============================================================================
-# 2. DEFINITIONS
+# DEFINITIONS
 # ==============================================================================
 
 # --- MODEL PARAMETERS ---
@@ -195,7 +149,7 @@ TEST_STIMULI = {
 }
 
 # ==============================================================================
-# 3. HELPER FUNCTIONS
+# HELPER FUNCTIONS
 # ==============================================================================
 
 def parse_log_file(file_name):
@@ -491,16 +445,6 @@ def parse_optional_prompt_key_arg(value):
     return resolved
 
 
-def parse_context_source_arg(value):
-    normalized = str(value).strip().lower()
-    if normalized not in CONTEXT_SOURCE_CHOICES:
-        valid = ", ".join(CONTEXT_SOURCE_CHOICES)
-        raise argparse.ArgumentTypeError(
-            f"Invalid --context-source '{value}'. Use one of: {valid}."
-        )
-    return normalized
-
-
 def parse_cli_args():
     parser = argparse.ArgumentParser(
         description="Run response-generation trials with configurable model/context/prompt."
@@ -551,19 +495,9 @@ def parse_cli_args():
         help="FULL context profile id (integer) or None.",
     )
     parser.add_argument(
-        "--context-source",
-        default=CONTEXT_SOURCE,
-        type=parse_context_source_arg,
-        choices=sorted(CONTEXT_SOURCE_CHOICES),
-        help=(
-            "Context source subdirectory of --contexts-dir. "
-            "Used when FULL context runs with --context-id."
-        ),
-    )
-    parser.add_argument(
         "--contexts-dir",
         default=CONTEXTS_DIR,
-        help="Directory holding <context-source>/profile_<id>.txt red-team replays.",
+        help="Directory holding auto_attack/profile_<id>.txt red-team replays.",
     )
     parser.add_argument(
         "--full-context-file",
@@ -842,9 +776,11 @@ def run_trial(
         print(f"[Appended JSONL record: {output_jsonl_path}]")
 
         time.sleep(2)
+        return True
     except Exception as exc:
         print(f"\nCRITICAL ERROR: {exc}")
         traceback.print_exc()
+        return False
 
 
 def determine_prompt_keys_to_run(run_all_prompts, prompt_key):
@@ -898,7 +834,7 @@ def resolve_output_jsonl_path(output_jsonl, model_key):
 
 
 # ==============================================================================
-# 4. MAIN EXECUTION
+# MAIN EXECUTION
 # ==============================================================================
 
 def main():
@@ -921,7 +857,7 @@ def main():
         full_context_id = validate_full_context_selection(
             contexts_to_run=contexts_to_run,
             context_id=args.context_id,
-            context_source=args.context_source,
+            context_source=CONTEXT_SOURCE,
         )
         output_jsonl = resolve_output_jsonl_path(
             output_jsonl=args.output_jsonl,
@@ -940,21 +876,27 @@ def main():
         print(f"Output JSONL file: {output_jsonl}")
 
     selected_config = MODELS[args.model_key]
+    failed = []
     for prompt_key in prompt_keys_to_run:
         prompt_text = TEST_STIMULI[prompt_key]
         for context_level in contexts_to_run:
-            run_trial(
+            ok = run_trial(
                 context_level=context_level,
                 prompt_key=prompt_key,
                 prompt_text=prompt_text,
                 model_config=selected_config,
                 output_jsonl_path=output_jsonl,
                 context_id=full_context_id if context_level == "FULL" else None,
-                context_source=args.context_source,
+                context_source=CONTEXT_SOURCE,
                 show_reasoning_tokens=args.show_reasoning_tokens,
             )
+            if not ok:
+                failed.append(f"{prompt_key}/{context_level}")
 
     print(f"\nDone. Aggregated response JSONL: {output_jsonl}")
+    if failed:
+        print(f"{len(failed)} trial(s) failed and were not written: {', '.join(failed)}")
+        return 1
     return 0
 
 

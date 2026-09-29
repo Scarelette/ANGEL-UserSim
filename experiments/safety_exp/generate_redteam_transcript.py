@@ -87,7 +87,6 @@ def parse_args() -> argparse.Namespace:
     )
     assistant_group.add_argument(
         "--auto-attack-model",
-        "--openai-model",
         dest="auto_attack_model",
         type=str,
         default=get_env("ANTHROPIC_DEPLOYMENT", "claude-opus-4-1"),
@@ -98,7 +97,6 @@ def parse_args() -> argparse.Namespace:
     )
     assistant_group.add_argument(
         "--auto-attack-max-tokens",
-        "--openai-max-tokens",
         dest="auto_attack_max_tokens",
         type=int,
         default=1200,
@@ -106,7 +104,6 @@ def parse_args() -> argparse.Namespace:
     )
     assistant_group.add_argument(
         "--auto-attack-max-retries",
-        "--openai-max-retries",
         dest="auto_attack_max_retries",
         type=int,
         default=3,
@@ -114,24 +111,11 @@ def parse_args() -> argparse.Namespace:
     )
     assistant_group.add_argument(
         "--auto-attack-sleep-seconds",
-        "--openai-sleep-seconds",
         dest="auto_attack_sleep_seconds",
         type=float,
         default=1.0,
         help="Sleep seconds between auto_attack retry attempts.",
     )
-    assistant_group.add_argument(
-        "--anthropic-base-url",
-        "--openai-base-url",
-        dest="anthropic_base_url",
-        type=str,
-        default=None,
-        help=(
-            "Optional Anthropic endpoint (e.g. an Azure AI Foundry .../anthropic/ URL). "
-            "If omitted, reads ANTHROPIC_BASE_URL; if that is unset too, the public Anthropic API is used."
-        ),
-    )
-
     patient_group = parser.add_argument_group("Patient Simulation")
     patient_group.add_argument(
         "--profiles-jsonl",
@@ -173,7 +157,7 @@ def parse_args() -> argparse.Namespace:
         type=str,
         default=None,
         help=(
-            "Seed therapist message used to bootstrap turn-1 patient generation. "
+            "Chatbot message that opens the conversation for the patient's first turn. "
             "If omitted, uses the first source assistant turn."
         ),
     )
@@ -596,10 +580,9 @@ def main() -> None:
     if max_turns <= 0:
         raise ValueError("--max-turns must be greater than 0.")
 
-    # The paper's runs used Claude on Azure AI Foundry
-    # (ANTHROPIC_BASE_URL=https://<resource>.services.ai.azure.com/anthropic/).
-    resolved_anthropic_base_url: Optional[str] = args.anthropic_base_url or get_env("ANTHROPIC_BASE_URL")
-    auto_attack_client = anthropic_client(base_url=resolved_anthropic_base_url)
+    # Endpoint and key come from .env (ANTHROPIC_API_KEY, optional ANTHROPIC_BASE_URL;
+    # the paper's runs used Claude on Azure AI Foundry).
+    auto_attack_client = anthropic_client()
 
     patient = None
     if not args.dry_run:
@@ -689,7 +672,7 @@ def main() -> None:
             "auto_attack_max_tokens": args.auto_attack_max_tokens,
             "auto_attack_max_retries": args.auto_attack_max_retries,
             "auto_attack_sleep_seconds": args.auto_attack_sleep_seconds,
-            "anthropic_foundry": bool(resolved_anthropic_base_url),
+            "anthropic_foundry": bool(get_env("ANTHROPIC_BASE_URL")),
             "dry_run": args.dry_run,
             "profile_id": args.profile_id,
             "patient_expand": args.patient_expand,
