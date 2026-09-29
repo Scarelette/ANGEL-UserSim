@@ -38,16 +38,9 @@ def build_parser() -> argparse.ArgumentParser:
     common.add_argument("--observer-model", default=None, help="Path to the stage-1 Observer checkpoint.")
     common.add_argument("--actor-model", default=None, help="Path to the stage-2 Actor checkpoint.")
     common.add_argument("--jsonl", default=None, help="Path to the profiles JSONL.")
-    common.add_argument("--device-map", default=None)
-    common.add_argument("--dtype", default=None)
     common.add_argument("--keep-both", action="store_true",
                         help="Keep the Observer resident after expansion (needs ~32 GB VRAM).")
     common.add_argument("--seed", type=int, default=None, help="Seed the reply-length RNG.")
-    common.add_argument("--max-new-tokens", type=int, default=None, help="Actor reply ceiling.")
-    common.add_argument("--temperature", type=float, default=None, help="Actor temperature.")
-    common.add_argument("--prompt-style", choices=["patient_demo", "angel_eval"], default=None,
-                        help="'patient_demo' (default): the demo / user-study prompt; "
-                             "'angel_eval': the prompt of the paper's profile-expansion experiment.")
 
     profile_args = argparse.ArgumentParser(add_help=False)
     group = profile_args.add_mutually_exclusive_group()
@@ -80,7 +73,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def build_config(args: argparse.Namespace) -> RunnerConfig:
-    """Assemble config: CLI flag wins, else env var, else packaged default."""
+    """Assemble config from the command-line flags (defaults in config.py)."""
     observer = ObserverConfig()
     actor = ActorConfig()
 
@@ -88,22 +81,12 @@ def build_config(args: argparse.Namespace) -> RunnerConfig:
         observer.model_path = args.observer_model
     if getattr(args, "actor_model", None):
         actor.model_path = args.actor_model
-    if getattr(args, "max_new_tokens", None):
-        actor.max_new_tokens = args.max_new_tokens
-    if getattr(args, "temperature", None) is not None:
-        actor.temperature = args.temperature
-    if getattr(args, "prompt_style", None):
-        actor.prompt_style = args.prompt_style
 
     config = RunnerConfig(observer=observer, actor=actor)
     if getattr(args, "jsonl", None):
         config.jsonl_path = Path(args.jsonl)
     if getattr(args, "backend", None):
         config.backend = args.backend
-    if getattr(args, "device_map", None):
-        config.device_map = args.device_map
-    if getattr(args, "dtype", None):
-        config.dtype = args.dtype
     if getattr(args, "keep_both", False):
         config.keep_both_resident = True
     if getattr(args, "seed", None) is not None:

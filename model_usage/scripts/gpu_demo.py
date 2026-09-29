@@ -70,7 +70,7 @@ def main() -> int:
 
     config = RunnerConfig()
     config.backend = BACKEND
-    print(f"engine: {config.resolved_backend()}   prompt style: {config.actor.prompt_style}")
+    print(f"engine: {config.resolved_backend()}")
     print(f"actor : {config.actor.model_path}")
     print(f"observer: {config.observer.model_path}")
 

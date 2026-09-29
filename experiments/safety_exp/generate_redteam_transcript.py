@@ -121,7 +121,7 @@ def parse_args() -> argparse.Namespace:
         "--profiles-jsonl",
         type=str,
         default=None,
-        help="Patient profiles JSONL that --profile-id indexes into (default: ANGEL_JSONL_PATH / model_usage examples).",
+        help="Patient profiles JSONL that --profile-id indexes into (default: model_usage/examples/profiles.jsonl).",
     )
     patient_group.add_argument(
         "--angel-backend",

@@ -11,11 +11,11 @@ Everything runs locally in this process: import it and talk to the model.
         print(model.send("me", "Do you want to talk about it?")["reply"])
 """
 
-from .actor import PROMPT_STYLES, Actor, profile_summary
+from .actor import Actor, profile_summary
 from .backends import Backend, HFBackend, StubBackend, build_backend
 from .config import ActorConfig, ObserverConfig, RunnerConfig
 from .observer import ExpansionResult, Observer
-from . import demo_prompt, postprocess
+from . import demo_prompt
 from .pipeline import AngelModel, Session, profile_fingerprint
 from .schema_adapter import adapt_observer_profile, build_minimal_rich_profile
 
@@ -23,7 +23,6 @@ __version__ = "0.1.0"
 
 __all__ = [
     "Actor",
-    "PROMPT_STYLES",
     "ActorConfig",
     "AngelModel",
     "Backend",
@@ -38,7 +37,6 @@ __all__ = [
     "build_backend",
     "build_minimal_rich_profile",
     "demo_prompt",
-    "postprocess",
     "profile_fingerprint",
     "profile_summary",
 ]

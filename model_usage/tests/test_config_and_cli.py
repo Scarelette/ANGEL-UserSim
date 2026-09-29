@@ -15,7 +15,7 @@ JSONL = ROOT / "examples" / "profiles.jsonl"
 
 
 class TestConfigResolution(unittest.TestCase):
-    def test_defaults_point_at_bundled_profiles(self):
+    def test_defaults_point_at_example_profiles(self):
         config = RunnerConfig()
         self.assertTrue(str(config.jsonl_path).endswith("examples/profiles.jsonl"))
 
@@ -23,22 +23,18 @@ class TestConfigResolution(unittest.TestCase):
         with mock.patch.dict(os.environ, {"ANGEL_ACTOR_MODEL": "/tmp/some-model"}):
             self.assertEqual(ActorConfig().model_path, "/tmp/some-model")
 
-    def test_numeric_env_var_is_parsed(self):
-        with mock.patch.dict(os.environ, {"ANGEL_ACTOR_MAX_NEW_TOKENS": "64"}):
-            self.assertEqual(ActorConfig().max_new_tokens, 64)
+    def test_generation_settings_are_the_demo_defaults(self):
+        actor, observer = ActorConfig(model_path="x"), ObserverConfig(model_path="x")
+        self.assertEqual((actor.max_new_tokens, actor.temperature, actor.top_p), (90, 0.8, 0.9))
+        self.assertEqual((observer.max_new_tokens, observer.temperature, observer.top_p), (3072, 0.7, 0.9))
 
-    def test_bad_numeric_env_var_is_rejected(self):
-        with mock.patch.dict(os.environ, {"ANGEL_ACTOR_MAX_NEW_TOKENS": "lots"}):
-            with self.assertRaises(ValueError):
-                ActorConfig()
-
-    def test_keep_both_env_var(self):
-        with mock.patch.dict(os.environ, {"ANGEL_KEEP_BOTH": "1"}):
-            self.assertTrue(RunnerConfig().keep_both_resident)
+    def test_backend_env_var(self):
+        with mock.patch.dict(os.environ, {"ANGEL_BACKEND": "hf"}):
+            self.assertEqual(RunnerConfig().backend, "hf")
 
 
 class TestBackendSelection(unittest.TestCase):
-    """`auto` must prefer vLLM (the engine the reference demo runs) and fall back to HF."""
+    """`auto` must prefer vLLM and fall back to transformers."""
 
     def test_default_is_auto(self):
         self.assertEqual(RunnerConfig().backend, "auto")
@@ -74,7 +70,7 @@ class TestBackendSelection(unittest.TestCase):
         self.assertIn(RunnerConfig(backend="auto").resolved_backend(), {"vllm", "hf"})
 
     def test_vllm_engine_defaults_match_patient_demo(self):
-        # the reference demo: VLLM_GPU_MEM=0.4, VLLM_MAX_LEN=8192.
+        # vLLM defaults: 40% GPU memory, 8192-token context.
         config = RunnerConfig()
         self.assertEqual(config.vllm_gpu_memory_utilization, 0.4)
         self.assertEqual(config.vllm_max_model_len, 8192)
@@ -133,14 +129,12 @@ class TestCliArgWiring(unittest.TestCase):
     def test_flags_override_config(self):
         args = self.parse(
             ["chat", "--actor-model", "/x/actor", "--observer-model", "/x/obs",
-             "--backend", "stub", "--max-new-tokens", "42", "--temperature", "0.5", "--keep-both"]
+             "--backend", "stub", "--keep-both"]
         )
         config = build_config(args)
         self.assertEqual(config.actor.model_path, "/x/actor")
         self.assertEqual(config.observer.model_path, "/x/obs")
         self.assertEqual(config.backend, "stub")
-        self.assertEqual(config.actor.max_new_tokens, 42)
-        self.assertEqual(config.actor.temperature, 0.5)
         self.assertTrue(config.keep_both_resident)
 
     def test_profile_sources_are_mutually_exclusive(self):

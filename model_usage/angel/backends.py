@@ -12,7 +12,7 @@ Three implementations behind one small interface:
 `build_backend("auto", ...)` prefers vLLM and falls back to transformers.
 
 The stub is what makes this package testable: the whole pipeline (profile
-adaptation, session state, postprocessing, CLI) runs against `StubBackend` on a
+adaptation, session state, reply cleanup, CLI) runs against `StubBackend` on a
 login node, and swapping in a real backend changes nothing but the text source.
 """
 

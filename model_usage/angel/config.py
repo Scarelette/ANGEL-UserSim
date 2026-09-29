@@ -1,15 +1,13 @@
 """Configuration for the two-stage Angel model runner.
 
-Resolution order for every setting: explicit argument -> environment variable ->
-default below.
+Generation settings are fixed to the released demo's values. What you can set:
 
-Model weights are resolved by ``angel_common.paths.resolve_model``:
-``--observer-model`` / ``--actor-model``  ->  ``ANGEL_OBSERVER_MODEL`` /
-``ANGEL_ACTOR_MODEL``  ->  ``<repo>/models/Qwen3-Observer-800`` /
-``<repo>/models/qwen3-8b-dpo-merged``  ->  Hugging Face Hub id.
-
-Generation defaults reproduce the released demo; changing one changes how the
-patient behaves.
+- model weights: ``--observer-model`` / ``--actor-model``, else
+  ``ANGEL_OBSERVER_MODEL`` / ``ANGEL_ACTOR_MODEL``, else
+  ``<repo>/models/Qwen3-Observer-800`` / ``<repo>/models/qwen3-8b-dpo-merged``,
+  else a Hugging Face Hub id (``angel_common.paths.resolve_model``);
+- the inference engine: ``--backend``, else ``ANGEL_BACKEND`` (default ``auto``);
+- vLLM's GPU memory share: ``ANGEL_VLLM_GPU_MEM`` (default ``0.4``).
 """
 
 from __future__ import annotations
@@ -32,85 +30,33 @@ def _is_local(path: str) -> bool:
     return Path(path).exists()
 
 
-def _env_str(name: str, default: Optional[str]) -> Optional[str]:
-    value = os.environ.get(name)
-    return value if value else default
-
-
-def _env_int(name: str, default: int) -> int:
-    raw = os.environ.get(name)
-    if not raw:
-        return default
-    try:
-        return int(raw)
-    except ValueError:
-        raise ValueError(f"{name} must be an integer, got {raw!r}")
-
-
-def _env_float(name: str, default: float) -> float:
-    raw = os.environ.get(name)
-    if not raw:
-        return default
-    try:
-        return float(raw)
-    except ValueError:
-        raise ValueError(f"{name} must be a number, got {raw!r}")
-
-
-def _env_bool(name: str, default: bool) -> bool:
-    raw = os.environ.get(name)
-    if raw is None or raw == "":
-        return default
-    return raw.strip().lower() in {"1", "true", "yes", "on"}
-
-
 @dataclass
 class ObserverConfig:
-    """Stage 1: short profile text -> structured long-profile JSON.
+    """Stage 1: short profile text -> structured long-profile JSON."""
 
-    Defaults are the released demo's settings: up to 3072 new tokens, 2
-    attempts, temperature 0.7, top_p 0.9.
-    """
-
-    model_path: str = field(
-        default_factory=lambda: resolve_model("observer")
-    )
-    max_new_tokens: int = field(default_factory=lambda: _env_int("ANGEL_OBSERVER_MAX_NEW_TOKENS", 3072))
-    temperature: float = field(default_factory=lambda: _env_float("ANGEL_OBSERVER_TEMPERATURE", 0.7))
-    top_p: float = field(default_factory=lambda: _env_float("ANGEL_OBSERVER_TOP_P", 0.9))
-    max_attempts: int = field(default_factory=lambda: _env_int("ANGEL_OBSERVER_MAX_ATTEMPTS", 2))
+    model_path: str = field(default_factory=lambda: resolve_model("observer"))
+    max_new_tokens: int = 3072
+    temperature: float = 0.7
+    top_p: float = 0.9
+    max_attempts: int = 2
     # Qwen3 thinking stays on: the Observer was trained with the <think> block.
     # The JSON extractor strips it afterwards.
-    enable_thinking: bool = field(default_factory=lambda: _env_bool("ANGEL_OBSERVER_THINKING", True))
+    enable_thinking: bool = True
 
 
 @dataclass
 class ActorConfig:
-    """Stage 2: profile + dialogue history -> patient reply.
+    """Stage 2: long profile + dialogue history -> patient reply."""
 
-    Defaults are the released demo's settings: a 90-token ceiling for the
-    per-turn length plan, temperature 0.8, top_p 0.9, repetition_penalty 1.15,
-    no_repeat_ngram_size 3, and up to 3 regenerations of an unusable reply.
-    """
-
-    model_path: str = field(
-        default_factory=lambda: resolve_model("actor")
-    )
-    max_new_tokens: int = field(default_factory=lambda: _env_int("ANGEL_ACTOR_MAX_NEW_TOKENS", 90))
-    temperature: float = field(default_factory=lambda: _env_float("ANGEL_ACTOR_TEMPERATURE", 0.8))
-    top_p: float = field(default_factory=lambda: _env_float("ANGEL_ACTOR_TOP_P", 0.9))
-    repetition_penalty: float = field(
-        default_factory=lambda: _env_float("ANGEL_ACTOR_REPETITION_PENALTY", 1.15)
-    )
-    no_repeat_ngram_size: int = field(
-        default_factory=lambda: _env_int("ANGEL_ACTOR_NO_REPEAT_NGRAM", 3)
-    )
-    max_turns: int = field(default_factory=lambda: _env_int("ANGEL_ACTOR_MAX_TURNS", 12))
-    max_retries: int = field(default_factory=lambda: _env_int("ANGEL_ACTOR_MAX_RETRIES", 3))
-    max_sentences: int = field(default_factory=lambda: _env_int("ANGEL_ACTOR_MAX_SENTENCES", 4))
-    # "patient_demo" is the interactive-demo prompt; "angel_eval" is the prompt
-    # used in the paper's profile-expansion experiment. See actor.py.
-    prompt_style: str = field(default_factory=lambda: _env_str("ANGEL_PROMPT_STYLE", "patient_demo"))
+    model_path: str = field(default_factory=lambda: resolve_model("actor"))
+    max_new_tokens: int = 90          # ceiling for the per-turn length plan
+    temperature: float = 0.8
+    top_p: float = 0.9
+    repetition_penalty: float = 1.15
+    no_repeat_ngram_size: int = 3
+    max_turns: int = 12               # history kept by the dynamic-state tracker
+    max_retries: int = 3              # regenerations of a refusal / repeated reply
+    max_sentences: int = 4
 
 
 @dataclass
@@ -119,23 +65,21 @@ class RunnerConfig:
 
     observer: ObserverConfig = field(default_factory=ObserverConfig)
     actor: ActorConfig = field(default_factory=ActorConfig)
-    jsonl_path: Path = field(
-        default_factory=lambda: Path(_env_str("ANGEL_JSONL_PATH", str(DEFAULT_JSONL_PATH)))
-    )
-    device_map: str = field(default_factory=lambda: _env_str("ANGEL_DEVICE_MAP", "auto"))
-    dtype: str = field(default_factory=lambda: _env_str("ANGEL_DTYPE", "bfloat16"))
+    jsonl_path: Path = DEFAULT_JSONL_PATH
+    device_map: str = "auto"
+    dtype: str = "bfloat16"
     # Observer + Actor are ~16 GB each. Freeing stage 1 after expansion keeps the
     # pipeline inside a 40 GB card; keep_both is for larger cards doing batch runs.
-    keep_both_resident: bool = field(default_factory=lambda: _env_bool("ANGEL_KEEP_BOTH", False))
+    keep_both_resident: bool = False
     seed: Optional[int] = None
     # "auto" prefers vLLM and falls back to transformers; "vllm" / "hf" force
     # one engine; "stub" is a no-GPU fake for tests.
-    backend: str = field(default_factory=lambda: _env_str("ANGEL_BACKEND", "auto"))
+    backend: str = field(default_factory=lambda: os.environ.get("ANGEL_BACKEND") or "auto")
     # vLLM engine settings (0.4 leaves room for both models on one large GPU).
     vllm_gpu_memory_utilization: float = field(
-        default_factory=lambda: _env_float("ANGEL_VLLM_GPU_MEM", 0.4)
+        default_factory=lambda: float(os.environ.get("ANGEL_VLLM_GPU_MEM") or 0.4)
     )
-    vllm_max_model_len: int = field(default_factory=lambda: _env_int("ANGEL_VLLM_MAX_LEN", 8192))
+    vllm_max_model_len: int = 8192
 
     def resolved_backend(self) -> str:
         """The concrete engine that will be used (resolves 'auto')."""
@@ -144,10 +88,6 @@ class RunnerConfig:
         from .backends import vllm_available
 
         return "vllm" if vllm_available() else "hf"
-
-    @property
-    def prompt_style(self) -> str:
-        return self.actor.prompt_style
 
     def missing_paths(self, *, need_observer: bool, need_actor: bool) -> List[str]:
         """Report unusable paths so callers fail with a readable message rather
@@ -180,7 +120,6 @@ class RunnerConfig:
         return {
             "backend": self.backend,
             "resolved_backend": self.resolved_backend(),
-            "prompt_style": self.actor.prompt_style,
             "observer_model": self.observer.model_path,
             "actor_model": self.actor.model_path,
             "observer_local": _is_local(self.observer.model_path),

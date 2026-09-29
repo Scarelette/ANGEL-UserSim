@@ -1,26 +1,14 @@
 """Stage 2 — the Actor model (the simulated patient).
 
-Two prompt styles drive the same checkpoint:
-
-`prompt_style="patient_demo"` (**default**), used by the interactive demo and the
-user study:
-  - system prompt: `demo_prompt.PATIENT_SYSTEM_TEMPLATE`, filled with the profile
-    rendered by `profile_to_short_text`
-  - dynamic state starts **empty** (`PatientStateManager({})`) and accumulates
-    only from therapist keywords; the profile's own emotions/behaviors reach the
-    model through the rendered profile block instead
-  - the **full** conversation is sent every turn (no history window)
-  - per turn the system prompt gets `\\n\\n<state block>` then `\\n\\n<length cue>`
-  - output cleaned by `demo_prompt.clean_reply` (prefers `<patient>…</patient>`)
-
-`prompt_style="angel_eval"`, the prompt of the paper's profile-expansion experiment:
-  - system prompt: `patient_profile.build_system_prompt`, rebuilt each turn
-  - dynamic state **seeded from the profile**
-  - history windowed to `max_turns`
-  - output cleaned by `postprocess.clean_reply` (handles `<state>`, role leakage,
-    duplicate paragraphs, prompt-echo fallback)
-
-Same weights, noticeably different behaviour.
+  - system prompt: `demo_prompt.PATIENT_SYSTEM_TEMPLATE`, filled with the long
+    profile rendered by `profile_to_short_text`
+  - dynamic emotional state starts empty and accumulates from therapist
+    keywords; the profile's own emotions and behaviours reach the model through
+    the rendered profile
+  - the full conversation is sent every turn
+  - each turn the system prompt gets the dynamic state and a reply-length cue
+  - replies are cleaned by `demo_prompt.clean_reply` and regenerated (up to
+    `max_retries`) when they are refusals or repeat a recent reply
 """
 
 from __future__ import annotations
@@ -29,14 +17,12 @@ import copy
 import random
 from typing import Any, Dict, List, Optional
 
-from . import demo_prompt, postprocess
+from . import demo_prompt
 from .backends import Backend, build_backend
 from .config import ActorConfig
 from .length_plan import plan_reply_length
-from .patient_profile import build_system_prompt, convert_rich_profile_to_internal
+from .patient_profile import convert_rich_profile_to_internal
 from .state_manager import PatientStateManager
-
-PROMPT_STYLES = ("patient_demo", "angel_eval")
 
 
 class Actor:
@@ -53,12 +39,8 @@ class Actor:
         dtype: str = "bfloat16",
         rng: Optional[random.Random] = None,
         is_internal_profile: bool = False,
-        prompt_style: Optional[str] = None,
     ) -> None:
         self.config = config or ActorConfig()
-        self.prompt_style = prompt_style or self.config.prompt_style
-        if self.prompt_style not in PROMPT_STYLES:
-            raise ValueError(f"prompt_style must be one of {PROMPT_STYLES}, got {self.prompt_style!r}")
 
         self.backend = backend or build_backend(
             backend_kind, self.config.model_path, device_map=device_map, dtype=dtype
@@ -71,9 +53,8 @@ class Actor:
     def set_profile(self, profile: Dict[str, Any], *, is_internal_profile: bool = False) -> None:
         """Bind a new profile and reset the conversation.
 
-        Both the rich profile and the converted internal profile are retained:
-        `patient_demo` renders the rich form into the prompt, `angel_eval` builds
-        its prompt from the internal form.
+        The rich profile is rendered into the prompt; the converted internal
+        profile carries the id, name and other public fields.
         """
         if is_internal_profile:
             self.profile = profile
@@ -83,20 +64,12 @@ class Actor:
             self.profile = convert_rich_profile_to_internal(profile, None)
             self.rich_profile = copy.deepcopy(profile)
 
-        if self.prompt_style == "patient_demo":
-            # Built once, from the profile only.
-            self.base_system_prompt = demo_prompt.build_patient_system_prompt(
-                demo_prompt.profile_to_short_text(self.rich_profile)
-            )
-            # Empty profile: state accumulates from therapist keywords alone.
-            self.state_manager = PatientStateManager(profile={}, max_turns=self.config.max_turns)
-        else:
-            self.state_manager = PatientStateManager(
-                profile=self.profile, max_turns=self.config.max_turns
-            )
-            self.base_system_prompt = build_system_prompt(
-                profile=self.profile, dynamic_state=self.state_manager.get_dynamic_state()
-            )
+        # Built once, from the profile only.
+        self.base_system_prompt = demo_prompt.build_patient_system_prompt(
+            demo_prompt.profile_to_short_text(self.rich_profile)
+        )
+        # Empty profile: state accumulates from therapist keywords alone.
+        self.state_manager = PatientStateManager(profile={}, max_turns=self.config.max_turns)
 
         self.conversation: List[Dict[str, str]] = []
 
@@ -118,37 +91,17 @@ class Actor:
     # -- prompt assembly ---------------------------------------------------
 
     def _system_prompt_for_turn(self, cue: Optional[str]) -> str:
-        dynamic_state = self.state_manager.get_dynamic_state()
-
-        if self.prompt_style == "patient_demo":
-            prompt = self.base_system_prompt.rstrip()
-            state_block = demo_prompt.render_dynamic_state(dynamic_state)
-            if state_block:
-                prompt += "\n\n" + state_block
-            if cue:
-                prompt += "\n\n" + cue
-            return prompt
-
-        # angel_eval rebuilds the whole prompt from the evolving dynamic state.
-        prompt = build_system_prompt(profile=self.profile, dynamic_state=dynamic_state)
+        prompt = self.base_system_prompt.rstrip()
+        state_block = demo_prompt.render_dynamic_state(self.state_manager.get_dynamic_state())
+        if state_block:
+            prompt += "\n\n" + state_block
         if cue:
-            prompt = prompt.rstrip() + "\n\n" + cue
+            prompt += "\n\n" + cue
         return prompt
 
     def _build_messages(self, conversation: List[Dict[str, str]], cue: Optional[str]) -> List[Dict[str, str]]:
-        if self.prompt_style == "patient_demo":
-            # The full conversation is sent every turn.
-            return demo_prompt.to_chat_messages(self._system_prompt_for_turn(cue), conversation)
-
-        # angel_eval windows the history to the last `max_turns` exchanges.
-        window = self.config.max_turns * 2
-        windowed = conversation[-window:] if window > 0 else conversation
-        return demo_prompt.to_chat_messages(self._system_prompt_for_turn(cue), windowed)
-
-    def _clean(self, raw: str, max_sentences: int) -> str:
-        if self.prompt_style == "patient_demo":
-            return demo_prompt.clean_reply(raw, max_sentences)
-        return postprocess.clean_reply(raw, max_sentences=max_sentences)
+        # The full conversation is sent every turn.
+        return demo_prompt.to_chat_messages(self._system_prompt_for_turn(cue), conversation)
 
     # -- generation --------------------------------------------------------
 
@@ -174,7 +127,7 @@ class Actor:
             no_repeat_ngram_size=self.config.no_repeat_ngram_size,
             enable_thinking=False,
         )
-        return self._clean(raw, max_sentences)
+        return demo_prompt.clean_reply(raw, max_sentences)
 
     def reply(self, user_message: str, *, record: bool = True) -> str:
         """Generate the patient's reply to one therapist message."""
@@ -183,7 +136,7 @@ class Actor:
             raise ValueError("user_message is empty")
 
         # State is updated before the prompt is built, so the shift this message
-        # causes is visible in this turn's reply (matches both upstreams).
+        # causes is visible in this turn's reply.
         self.state_manager.update_from_user_message(message)
 
         conversation = self.conversation + [{"role": "therapist", "content": message}]
@@ -207,7 +160,7 @@ class Actor:
         recent = [t["content"] for t in self.conversation if t["role"] == "patient"][-3:]
         attempt = 0
         while (
-            postprocess.is_refusal(reply) or postprocess.too_similar(reply, recent)
+            demo_prompt.is_refusal(reply) or demo_prompt.too_similar(reply, recent)
         ) and attempt < self.config.max_retries:
             attempt += 1
             reply = self._generate_once(

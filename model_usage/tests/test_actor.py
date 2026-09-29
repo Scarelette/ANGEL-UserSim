@@ -15,8 +15,8 @@ def rich_profile():
     return json.loads(EXAMPLE_PROFILE.read_text(encoding="utf-8"))
 
 
-def make_actor(replies=None, prompt_style="patient_demo", **config_kwargs):
-    config = ActorConfig(model_path="unused", prompt_style=prompt_style, **config_kwargs)
+def make_actor(replies=None, **config_kwargs):
+    config = ActorConfig(model_path="unused", **config_kwargs)
     return Actor(rich_profile(), config, backend=StubBackend(replies=replies))
 
 
@@ -35,16 +35,12 @@ class TestProfileBinding(unittest.TestCase):
         actor = Actor(internal, ActorConfig(model_path="unused"),
                       backend=StubBackend(), is_internal_profile=True)
         self.assertEqual(actor.profile["name"], "Sam")
-        # _raw_profile round-trips the rich form, which patient_demo needs.
+        # _raw_profile round-trips the rich form, which the prompt renders.
         self.assertEqual(actor.rich_profile["identity"]["name"], "Sam")
 
     def test_invalid_profile_rejected(self):
         with self.assertRaises(ValueError):
             Actor({"identity": {}}, ActorConfig(model_path="unused"), backend=StubBackend())
-
-    def test_unknown_prompt_style_rejected(self):
-        with self.assertRaises(ValueError):
-            make_actor(prompt_style="nonsense")
 
     def test_set_profile_resets_conversation(self):
         actor = make_actor()
@@ -89,8 +85,8 @@ class TestReply(unittest.TestCase):
         self.assertEqual(actor.conversation, [])
 
 
-class TestPatientDemoPromptStyle(unittest.TestCase):
-    """patient_demo is the default and must match the reference demo's behaviour."""
+class TestActorPrompt(unittest.TestCase):
+    """The Actor prompt: rendered profile, empty initial state, full history."""
 
     def test_system_prompt_uses_the_demo_template(self):
         actor = make_actor()
@@ -101,7 +97,7 @@ class TestPatientDemoPromptStyle(unittest.TestCase):
         self.assertIn("Presenting problems:", actor.base_system_prompt)
 
     def test_dynamic_state_starts_empty_not_profile_seeded(self):
-        # the reference demo constructs PatientStateManager({}), so profile emotions do
+        # The state tracker starts empty, so profile emotions do
         # NOT preload the dynamic state; they reach the model via the profile block.
         actor = make_actor()
         state = actor.state_manager.get_dynamic_state()
@@ -124,7 +120,7 @@ class TestPatientDemoPromptStyle(unittest.TestCase):
         self.assertTrue(system.rstrip().endswith("."), system[-80:])
 
     def test_full_history_is_sent_unwindowed(self):
-        # the reference demo sends the entire conversation every turn.
+        # The entire conversation is sent every turn.
         actor = make_actor(max_turns=2)
         for i in range(5):
             actor.reply(f"Question {i}?")
@@ -142,33 +138,9 @@ class TestPatientDemoPromptStyle(unittest.TestCase):
         self.assertEqual(actor.reply("How are you?"), half)
 
     def test_role_prefix_is_not_stripped(self):
-        # Faithful to the reference demo: clean_reply there does no role-leakage strip.
+        # clean_reply does no role-leakage strip.
         actor = make_actor(replies=["patient: I slept badly."])
         self.assertEqual(actor.reply("How did you sleep?"), "patient: I slept badly.")
-
-
-class TestAngelEvalPromptStyle(unittest.TestCase):
-    """The alternate path, reproducing the paper evaluation actor (experiments/profile_expansion)."""
-
-    def test_system_prompt_uses_the_eval_template(self):
-        actor = make_actor(prompt_style="angel_eval")
-        self.assertIn("You are role-playing as a simulated patient", actor.base_system_prompt)
-        self.assertIn("Identity:", actor.base_system_prompt)
-
-    def test_dynamic_state_is_seeded_from_the_profile(self):
-        actor = make_actor(prompt_style="angel_eval")
-        self.assertTrue(actor.state_manager.get_dynamic_state()["current_emotions"])
-
-    def test_history_is_windowed_by_max_turns(self):
-        actor = make_actor(prompt_style="angel_eval", max_turns=2)
-        for i in range(5):
-            actor.reply(f"Question {i}?")
-        roles = [m["role"] for m in actor.backend.calls[-1]]
-        self.assertLessEqual(roles.count("assistant"), 2)
-
-    def test_role_prefix_is_stripped(self):
-        actor = make_actor(prompt_style="angel_eval", replies=["patient: I slept badly ."])
-        self.assertEqual(actor.reply("How did you sleep?"), "I slept badly.")
 
 
 class TestRegeneration(unittest.TestCase):

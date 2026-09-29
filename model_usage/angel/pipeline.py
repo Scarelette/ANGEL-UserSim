@@ -178,7 +178,6 @@ class AngelModel:
             backend=self._actor_backend,
             rng=self.rng,
             is_internal_profile=True,
-            prompt_style=self.config.actor.prompt_style,
         )
 
     # -- session surface ---------------------------------------------------
@@ -304,7 +303,6 @@ class AngelModel:
             },
             "model": {
                 "backend": self.config.backend,
-                "prompt_style": session.actor.prompt_style,
                 "actor_model": self.config.actor.model_path,
                 "observer_model": self.config.observer.model_path if session.expansion else None,
                 "observer_used": session.expansion is not None,

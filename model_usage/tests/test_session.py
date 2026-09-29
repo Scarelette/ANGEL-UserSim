@@ -150,14 +150,8 @@ class TestObserverPath(unittest.TestCase):
 
 
 class TestActorInputIsObserverOutput(unittest.TestCase):
-    """Pins *which* profile the Actor role-plays.
-
-    This is the deliberate divergence from the reference demo. There, stage 1's output
-    feeds only the symptom-network graph and the chat always uses the profile as
-    authored (`demo_app.chat_start` -> `profile_to_short_text(req.profile)`).
-    Here the pipeline is a chain: when stage 1 runs, the Actor's input IS the
-    Observer's output.
-    """
+    """Pins *which* profile the Actor role-plays: when stage 1 runs, the
+    Actor's input is the Observer's output, not the profile as given."""
 
     def test_short_profile_actor_gets_the_expanded_profile(self):
         model = make_model()
@@ -205,7 +199,7 @@ class TestActorInputIsObserverOutput(unittest.TestCase):
         )
 
     def test_expand_of_a_rich_profile_renders_it_as_stage1_input(self):
-        # the reference demo's /expand does `short_text or profile_to_short_text(profile)`.
+        # A structured profile is rendered to text before stage 1.
         model = make_model()
         model.expand_profile(load_example())
         observer_calls = model._observer.backend.calls

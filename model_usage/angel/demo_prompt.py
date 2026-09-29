@@ -1,14 +1,9 @@
-"""Demo-style prompting for the Actor (stage 2).
+"""The Actor's prompt and reply cleanup (the demo / user-study setup).
 
-The default prompt (`prompt_style="patient_demo"`), used by the interactive
-demo and the user study: `PATIENT_SYSTEM_TEMPLATE` filled with the profile
-rendered as text by `profile_to_short_text`, with replies cleaned by
-`clean_reply`.
-
-The paper's profile-expansion experiment prompts the same checkpoint
-differently (`prompt_style="angel_eval"`, `patient_profile.build_system_prompt`):
-a different template, profile rendering and output cleanup, so the two styles
-do not behave the same.
+`PATIENT_SYSTEM_TEMPLATE` is filled with the profile rendered as text by
+`profile_to_short_text`; each turn appends the dynamic emotional state and a
+length cue. Replies are cleaned by `clean_reply`; `is_refusal` and
+`too_similar` trigger a regeneration.
 """
 
 from __future__ import annotations
@@ -197,3 +192,41 @@ def to_chat_messages(system_prompt: str, conversation: List[Dict[str, str]]) -> 
         elif role in ("system", "user", "assistant"):
             messages.append({"role": role, "content": content})
     return messages
+
+
+# "I don't know / I do not know / I don't remember / I'm not sure / not really
+# sure / no idea", tolerant of straight or curly apostrophes.
+_REFUSAL_RE = re.compile(
+    r"i\s+(?:do\s*n[’']?t|do\s+not)\s+(?:know|remember)"
+    r"|i\s*[’']?m\s+not\s+sure"
+    r"|not\s+really\s+sure"
+    r"|no\s+idea",
+    flags=re.IGNORECASE,
+)
+
+
+def is_refusal(text: str) -> bool:
+    """True when the reply is empty or an 'I don't know'-style non-answer."""
+    if not text or not text.strip():
+        return True
+    return bool(_REFUSAL_RE.search(text))
+
+
+def _norm_words(text: str) -> List[str]:
+    return re.findall(r"[a-z']+", (text or "").lower())
+
+
+def too_similar(text: str, recent: List[str], threshold: float = 0.6) -> bool:
+    """True when `text` near-duplicates a recent patient reply (word-set
+    Jaccard) — catches the despair-repetition loop."""
+    words = set(_norm_words(text))
+    if len(words) < 4:
+        return False
+    for previous in recent or []:
+        previous_words = set(_norm_words(previous))
+        if not previous_words:
+            continue
+        union = len(words | previous_words)
+        if union and len(words & previous_words) / union >= threshold:
+            return True
+    return False
