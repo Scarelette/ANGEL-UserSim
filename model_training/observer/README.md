@@ -123,6 +123,8 @@ The weights can be set with `--w-format`, `--w-precision` and `--w-coverage`.
 
 Other stage-2 rewards:
 - `--reward local`: uses the Qwen3-0.6B edge classifier instead of the judge.
+  Tried in the paper, but not used for the released model: `Qwen3-Observer-800`
+  was trained with the gpt-5-mini judge.
 - `--reward format_only --edge-dump FILE`: collects proposed edges to use as classifier training data.
 
 **Build a network with a trained Observer:**
