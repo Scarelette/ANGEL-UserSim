@@ -8,8 +8,9 @@ Settings of the paper runs (checked against their saved trainer states):
         (3 epochs = 102 steps)
 
 LoRA r=64, alpha=16, dropout 0.05 on all projection layers; lr 1e-4,
-paged_adamw_32bit, warmup_ratio 0.03. Text format is
-``### System / ### User / ### Assistant`` (loss on the full sequence).
+paged_adamw_32bit, warmup_ratio 0.03. Examples are rendered with the Qwen3
+chat template, the same format GRPO and inference use (loss on the full
+sequence).
 The adapter is merged into the 4-bit base and saved, as in the paper runs
 (``--save-adapter-only`` keeps just the adapter).
 
@@ -113,7 +114,7 @@ def main() -> None:
         report_to="none",
     )
 
-    dataset = load_sft_text_dataset(args.data, tokenizer.eos_token, limit=args.limit)
+    dataset = load_sft_text_dataset(args.data, tokenizer, limit=args.limit)
     print(dataset[0]["text"][:500])
     print(f"{len(dataset)} training examples")
 

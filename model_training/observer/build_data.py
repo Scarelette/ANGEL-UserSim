@@ -38,6 +38,7 @@ from angel_common.paths import DATA_DIR
 from model_training.observer.prompts import (
     build_input_s1,
     build_input_s2,
+    build_system_prompt_s1,
     build_system_prompt_s1_datagen,
     build_system_prompt_s2,
 )
@@ -200,10 +201,10 @@ def make_sft(args) -> None:
         for path in args.inputs:
             for row in read_jsonl(path):
                 if args.stage == "s1":
-                    complaints = row["Complaints"]
-                    if args.pair_augmented and row.get("new_complaints"):
-                        complaints = row["new_complaints"]
-                    system, user = build_system_prompt_s1_datagen(), build_input_s1(complaints)
+                    # Augmented rows were answered from their paraphrase (new_complaints),
+                    # so the user turn must be that paraphrase, not the original text.
+                    complaints = row.get("new_complaints") or row["Complaints"]
+                    system, user = build_system_prompt_s1(), build_input_s1(complaints)
                 else:
                     system, user = build_system_prompt_s2(), build_input_s2(row["Complaints"], row["gpt5_nodes"])
                 yield {"messages": [
@@ -247,10 +248,6 @@ def main() -> None:
     s.add_argument("--inputs", nargs="+", default=None,
                    help="S1 default: nodes_sft + aug_p_sft files; S2 default: sft_training_s2_data.jsonl.")
     s.add_argument("--output", default=None)
-    s.add_argument("--pair-augmented", action="store_true",
-                   help="S1: use new_complaints as the user turn for augmented rows (the GPT-5 answer was "
-                        "generated from it). Default reproduces the released data, which paired the ORIGINAL "
-                        "complaints with it (README, Known issues).")
     s.set_defaults(fn=make_sft)
 
     g = sub.add_parser("make-grpo")

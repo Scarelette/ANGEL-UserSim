@@ -47,8 +47,6 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--max-prompt-length", type=int, default=2048)
     p.add_argument("--max-completion-length", type=int, default=4096)
     p.add_argument("--limit", type=int, default=None, help="Use only the first N rows (debugging).")
-    p.add_argument("--chat-template", choices=["original", "fixed", "native"], default="original",
-                   help="'original' reproduces the released runs (see README, Known issues).")
     # S2 reward
     p.add_argument("--judge-max-concurrent", type=int, default=3)
     p.add_argument("--w-format", type=float, default=0.1, help="S2 reward: weight of the format term")
@@ -106,12 +104,7 @@ def main() -> None:
     from trl import GRPOConfig, GRPOTrainer
 
     from model_training.observer.data import load_grpo_dataset
-    from model_training.observer.prompts import (
-        build_match_regex,
-        build_system_prompt_s1,
-        build_system_prompt_s2,
-        setup_chat_template,
-    )
+    from model_training.observer.prompts import build_match_regex
 
     tokenizer = AutoTokenizer.from_pretrained(args.model, trust_remote_code=True)
     tokenizer.pad_token = tokenizer.eos_token
@@ -142,8 +135,6 @@ def main() -> None:
             target_modules=["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"],
         )
 
-    system_prompt = build_system_prompt_s1() if args.stage == "s1" else build_system_prompt_s2()
-    setup_chat_template(tokenizer, system_prompt, mode=args.chat_template)
     dataset = load_grpo_dataset(args.data, stage=args.stage, limit=args.limit)
 
     training_args = GRPOConfig(

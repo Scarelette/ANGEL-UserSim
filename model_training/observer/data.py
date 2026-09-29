@@ -73,22 +73,17 @@ def load_grpo_dataset(data_path: str, stage: str, limit: Optional[int] = None):
     return dataset.map(to_row)
 
 
-def load_sft_text_dataset(data_path: str, eos_token: str, limit: Optional[int] = None):
+def load_sft_text_dataset(data_path: str, tokenizer, limit: Optional[int] = None):
     """Chat-format JSONL ({"messages": [system, user, assistant]}) -> ``text`` column
-    in the ``### System / ### User / ### Assistant`` format used for Observer SFT."""
+    rendered with the tokenizer's (Qwen3) chat template, the same format GRPO and
+    inference use."""
     from datasets import load_dataset
-
-    from model_training.observer.prompts import format_sft_text
 
     dataset = load_dataset("json", data_files=data_path, split="train")
     if limit is not None:
         dataset = dataset.select(range(min(limit, len(dataset))))
 
     def fmt(example):
-        parts = {"system": "", "user": "", "assistant": ""}
-        for msg in example["messages"]:
-            if msg["role"] in parts:
-                parts[msg["role"]] = msg["content"]
-        return {"text": format_sft_text(parts["system"], parts["user"], parts["assistant"], eos_token)}
+        return {"text": tokenizer.apply_chat_template(example["messages"], tokenize=False)}
 
     return dataset.map(fmt, remove_columns=dataset.column_names)

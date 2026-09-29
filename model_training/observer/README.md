@@ -133,26 +133,34 @@ python -m model_training.observer.predict_network --input data/examples/observer
     --input-field Complaints --output outputs/observer/networks.jsonl
 ```
 
+## Prompt format
+
+Every stage uses the same prompt: the task's system prompt and the complaints,
+rendered with Qwen3's chat template. That covers SFT, GRPO, `predict_network`
+and `model_usage`. The Observer answers with `<think>…</think>` reasoning, then
+the `<GRAPH>` JSON. Each stage-1 SFT answer is paired with the complaints GPT-5
+answered: the original text, or its paraphrase for augmented rows.
+
+The paper's runs differed in two ways:
+- they used a `### System/User/Assistant` format for SFT and a broken template
+  for GRPO;
+- they paired paraphrase-based answers with the original complaints.
+
+This code fixes both, so retraining with it is expected to differ slightly from
+the released checkpoint.
+
 ## Known issues
 
 These are kept as in the paper's runs. Where a flag fixes an issue, it is off
 by default.
 
-1. **Broken GRPO chat template.** It references variables Hugging Face never
-   fills in, so the prompt has stray whitespace and no `<think>`. Stages also
-   format prompts differently: SFT uses `### System/User/Assistant`, GRPO this
-   template, inference the Qwen3 template. The flag `--chat-template fixed` or
-   `native` fixes the template.
-2. **Mis-paired stage-1 SFT data.** 4579 of 5599 rows pair the original
-   complaints with GPT-5's answer for the paraphrased ones. Fix:
-   `make-sft --stage s1 --pair-augmented`.
-3. **Stage-1 merge base.** The S1 GRPO adapter was trained on
+1. **Stage-1 merge base.** The S1 GRPO adapter was trained on
    `Qwen-3-8B-Patient-SFT` but merged onto `Qwen/Qwen3-8B`. Fix: pass
    `--base models/Qwen-3-8B-Patient-SFT` to merge onto the model it was trained
    on.
-4. **4-bit SFT merges.** `sft` merges into the 4-bit base. Fix:
+2. **4-bit SFT merges.** `sft` merges into the 4-bit base. Fix:
    `--save-adapter-only`, then `merge` onto a bf16 base.
-5. **Repeated GRPO cases.** GRPO data repeats each of the 510 cases about 10
+3. **Repeated GRPO cases.** GRPO data repeats each of the 510 cases about 10
    times: the paraphrased rows carry the original complaints.
 
 ## Data
