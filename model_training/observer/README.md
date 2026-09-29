@@ -52,11 +52,6 @@ AZURE_OPENAI_API_KEY=<your key>
 If your Azure deployments are named `gpt-5` and `gpt-5-mini`, that is all.
 Otherwise, also set the two deployment names.
 
-Optional, only for the evaluation in `eval/`:
-- `ANGEL_OBSERVER_MODEL`: the trained Observer (default `models/Qwen3-Observer-800`).
-- `ANGEL_EDGE_CLASSIFIER_DEPLOYMENT`: your fine-tuned edge classifier, for the "reasonability" score (see [Edge classifier](#edge-classifier-for-eval)).
-- `ANTHROPIC_API_KEY` and `GOOGLE_CLOUD_PROJECT`: for the Claude and Gemini baselines.
-
 Add `--wandb-project <name>` to log training to Weights & Biases.
 
 Outputs go under `data/observer/` and `models/`. `data/examples/observer/` has
@@ -138,45 +133,6 @@ python -m model_training.observer.predict_network --input data/examples/observer
     --input-field Complaints --output outputs/observer/networks.jsonl
 ```
 
-## Edge classifier (for `eval/`)
-
-The evaluation's "reasonability" score comes from a Yes/No edge classifier: a
-GPT-4 deployment fine-tuned on human edge annotations with Azure OpenAI.
-`edge_classifier_data` builds the fine-tuning data from the annotation CSVs:
-
-```bash
-python -m model_training.observer.edge_classifier_data from-annotations --annotation-dir <csvs>
-```
-
-Run the fine-tuning in Azure, then set `ANGEL_EDGE_CLASSIFIER_DEPLOYMENT` to the
-deployment's name.
-
-## Automatic profile evaluation (`eval/`)
-
-This compares long-profile generators on two measures:
-- **Reasonability:** how plausible the classifier finds the edges of the
-  network the Observer builds from each generated profile.
-- **Diversity:** self-BLEU and embedding distance across repeated generations.
-
-```bash
-python -m model_training.observer.eval.auto_profile_eval_pipeline \
-    --input data/examples/observer/short_profiles.jsonl --input-field short_patient_profile \
-    --stage1-models models/Qwen3-Observer-800 --generations-per-model 12 --run-name ours
-# baselines: --stage1-models gpt-5 | claude-opus-4-5 | gemini-2.5-flash | Qwen/Qwen3-8B
-# several GPUs: add --generation-gpus 0,1,2,3 --network-gpus 0,1,2,3
-```
-
-The report is written to `outputs/observer/auto_eval_runs/<run>/report.md`.
-The paper's results on 50 profiles:
-
-| Generator | Reasonability | Edges per profile |
-|---|---|---|
-| Ours (Observer-800) | 0.892 | 11.0 |
-| Claude | 0.894 | 5.7 |
-| Gemini | 0.907 | 5.9 |
-| GPT-5 | 0.879 | 11.8 |
-| Qwen3-8B | 0.879 | 11.7 |
-
 ## Known issues
 
 These are kept as in the paper's runs. Where a flag fixes an issue, it is off
@@ -205,5 +161,4 @@ Only synthetic examples are included. The paper's data come from published
 case reports, which are copyrighted:
 - 510 case reports with presenting complaints;
 - 5599 stage-1 and 2138 stage-2 SFT rows;
-- 5089 GRPO prompts;
-- human edge annotations (for the edge classifier).
+- 5089 GRPO prompts.

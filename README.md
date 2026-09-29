@@ -37,7 +37,7 @@ commands with canned replies.
 | Folder | What it's for |
 |---|---|
 | [`model_usage/`](model_usage/) | **Use Angel**: short description → Observer → long profile → Actor, as a chat or from Python. No API keys needed. |
-| [`model_training/observer/`](model_training/observer/) | Train the Observer: data building, SFT, and GRPO for symptom nodes (stage 1) and edges (stage 2, rewarded by a gpt-5-mini judge); also the automatic profile evaluation. |
+| [`model_training/observer/`](model_training/observer/) | Train the Observer: data building, SFT, and GRPO for symptom nodes (stage 1) and edges (stage 2, rewarded by a gpt-5-mini judge). |
 | [`model_training/actor/`](model_training/actor/) | Train the Actor: masked symptom networks, conversations with an LLM therapist, SFT, then DPO on top of the SFT model. |
 | [`experiments/profile_expansion/`](experiments/profile_expansion/) | The main experiment: Angel vs. Patient-Psi, Roleplay-doh, Eeyore and a one-stage ablation in a fixed intake interview. Measures simulation diversity, behavior diversity and profile alignment. |
 | [`experiments/safety_exp/`](experiments/safety_exp/) | The safety experiment: how commercial chatbots respond to a user (played by Angel) whose beliefs escalate toward delusion, scored with a clinical codebook. |
