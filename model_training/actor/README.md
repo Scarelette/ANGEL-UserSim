@@ -43,7 +43,7 @@ Optional:
 - `ANGEL_DATA_DIR` / `ANGEL_MODELS_DIR` to move `data/` and `models/`.
 - W&B logging for DPO with `--report-to wandb` (plus `WANDB_API_KEY`).
 
-**Input:** one JSON object per case with `symptoms` (node names) and `grah`
+**Input:** one JSON object per case with `symptoms` (node names) and `graph`
 (`{"from", "to"}` edges): the Observer's network output. Synthetic one-row
 examples of every file in the pipeline are in `data/examples/actor/`.
 

@@ -1,12 +1,12 @@
 """Run the Observer end to end: profile text -> S1 nodes -> S2 directed symptom network.
 
-Works on any text field: presenting complaints (``--input-field complaints``)
-or Observer/LLM-generated long profiles (``--input-field long_profile_description``).
+Reads presenting complaints from ``--input-field`` (default ``Complaints``);
+any text field works.
 Generation: sampling, temperature 0.1, top_p 0.9; S2 is retried until a
 <GRAPH> block parses.
 
-    python -m model_training.observer.predict_network --input data.jsonl --output nets.jsonl \
-        --error-output nets_err.jsonl --input-field complaints
+    python -m model_training.observer.predict_network --input data/examples/observer/case_reports.jsonl \
+        --output outputs/observer/networks.jsonl
 """
 
 import argparse
@@ -210,7 +210,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--input",
         required=True,
-        help="Input JSONL path containing long patient profiles.",
+        help="Input JSONL, one case per line.",
     )
     parser.add_argument(
         "--output",
@@ -224,8 +224,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--input-field",
-        default="long_profile_description",
-        help="Field containing the long patient profile text.",
+        default="Complaints",
+        help="Field holding the presenting-complaints text (default: Complaints).",
     )
     parser.add_argument("--model-path", default=None, help="Default: resolve_model('observer') (ANGEL_OBSERVER_MODEL).")
     parser.add_argument("--stage1-max-new-tokens", type=int, default=2048)

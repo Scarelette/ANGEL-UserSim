@@ -1,4 +1,4 @@
-"""Observer prompts, output tags, GRPO chat template and completion regex.
+"""Observer prompts, output tags and the completion regex.
 
 The system prompts are verbatim from the training runs that produced
 Qwen3-Observer-800 — the checkpoint was tuned against these exact strings, so

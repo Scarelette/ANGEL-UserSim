@@ -1,7 +1,7 @@
 """Step 1 — mask part of each symptom network ("hidden" edges the patient
 does not initially recognize).
 
-For every network (``symptoms`` + directed ``grah`` edges) GPT-5:
+For every network (``symptoms`` + directed ``graph`` edges) GPT-5:
   1. classifies the case into a pattern from ``mask_pattern.jsonl``
      (depression / anxiety / substance use / trauma / mania / Psychosis), and
   2. labels every symptom as Behavior / Emotion / Physiological Sensation /
@@ -128,7 +128,9 @@ def process_graphs(input_file: Path, output_file: Path, err_file: Path, mask_per
             if not line.strip():
                 continue
             obj = json.loads(line)
-            symptoms, graph = obj["symptoms"], obj["grah"]
+            # "graph" is what the Observer's predict_network writes; the paper's
+            # network files spell it "grah".
+            symptoms, graph = obj["symptoms"], obj.get("graph", obj.get("grah"))
             if len(graph) == 0:
                 f_err.write(json.dumps(obj) + "\n")
                 continue
@@ -149,7 +151,8 @@ def process_graphs(input_file: Path, output_file: Path, err_file: Path, mask_per
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--input", default=str(DATA_DIR / "actor" / "network_models.jsonl"),
-                    help="JSONL with 'symptoms' (list) and 'grah' (list of {from,to}) per case")
+                    help="JSONL with 'symptoms' (list) and 'graph' (list of {from,to}) per case: the output of "
+                         "model_training.observer.predict_network")
     ap.add_argument("--output", required=True, help="output JSONL (appended)")
     ap.add_argument("--err-output", default=None, help="rows with empty graphs (default: <output>.err.jsonl)")
     ap.add_argument("--mask-pct", type=float, default=0.4, help="max fraction of edges to mask")

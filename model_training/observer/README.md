@@ -144,7 +144,7 @@ The weights can be set with `--w-format`, `--w-precision` and `--w-coverage`.
 
 ```bash
 python -m model_training.observer.predict_network --input data/examples/observer/case_reports.jsonl \
-    --input-field Complaints --output outputs/observer/networks.jsonl
+    --output outputs/observer/networks.jsonl
 ```
 
 ## Prompt format
@@ -155,23 +155,6 @@ and `model_usage`. The Observer answers with `<think>…</think>` reasoning, the
 the `<GRAPH>` JSON. Each stage-1 SFT answer is paired with the complaints GPT-5
 answered: the original text, or its paraphrase for augmented rows.
 
-The paper's runs differed in four ways, all fixed here:
-- they used a `### System/User/Assistant` format for SFT and a broken template
-  for GRPO;
-- they paired paraphrase-based answers with the original complaints;
-- they merged each SFT adapter into its 4-bit training copy, giving 4-bit
-  models;
-- they merged the S1 GRPO adapter onto plain Qwen3-8B instead of the SFT model
-  it was trained on.
-
-Retraining with this code is therefore expected to differ from the released
-checkpoint.
-
-## Known issues
-
-1. **Repeated GRPO cases.** GRPO data repeats each of the 510 cases about 10
-   times: the paraphrased rows carry the original complaints. Kept as in the
-   paper's runs.
 
 ## Data
 
