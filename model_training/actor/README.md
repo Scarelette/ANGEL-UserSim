@@ -52,6 +52,10 @@ examples of every file in the pipeline are in `data/examples/actor/`.
 Every path below is a default and can be changed with its flag.
 
 ```bash
+# 0. symptom networks from case complaints, with the trained Observer
+python -m model_training.observer.predict_network --input data/observer/case_report_final_all.jsonl \
+    --output data/actor/network_models.jsonl
+
 # 1. mask 10–60 % of the maskable edges (one file per mask rate)
 for i in 1 2 3 4 5 6; do
   python -m model_training.actor.mask_generator --input data/actor/network_models.jsonl \

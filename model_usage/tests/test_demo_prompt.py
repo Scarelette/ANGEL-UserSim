@@ -29,6 +29,16 @@ class TestCleanReply(unittest.TestCase):
     def test_strips_think_and_tags(self):
         self.assertEqual(clean_reply("<think>plan</think> Honestly, not great."), "Honestly, not great.")
 
+    def test_state_word_reply_keeps_only_the_speech(self):
+        raw = "<state>anxious, replaying the midterm</state>\n<word>Probably my midterm. I got a D.</word>"
+        self.assertEqual(clean_reply(raw), "Probably my midterm. I got a D.")
+
+    def test_unclosed_word_block(self):
+        self.assertEqual(clean_reply("<state>tense</state><word>I guess I'm just tired"), "I guess I'm just tired")
+
+    def test_state_without_word_is_dropped(self):
+        self.assertEqual(clean_reply("<state>guarded</state> Fine, I suppose."), "Fine, I suppose.")
+
     def test_caps_sentences(self):
         self.assertEqual(cap_sentences("One. Two. Three.", 2), "One. Two.")
 

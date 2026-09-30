@@ -159,17 +159,22 @@ def cap_sentences(text: str, max_sentences: int = 4) -> str:
 def clean_reply(text: str, max_sentences: int = 4) -> str:
     """Extract the patient utterance from stage-2 output.
 
-    The stage-2 checkpoint emits training scaffolding: it wraps the reply in
-    <patient>…</patient>, may emit <think>…</think>, and sometimes repeats itself
-    verbatim. The tagged block is preferred when present.
+    The stage-2 checkpoint emits training scaffolding: it was trained to answer
+    as <state>…</state><word>…</word> (hidden state, then speech), may wrap the
+    reply in <patient>…</patient> or emit <think>…</think>, and sometimes repeats
+    itself verbatim. Only the spoken part is returned.
     """
     text = (text or "").strip()
+    word = re.search(r"<word>\s*(.*?)\s*(?:</word>|$)", text, re.S)
     match = re.search(r"<patient>\s*(.*?)\s*</patient>", text, re.S)
-    if match:
+    if word:
+        text = word.group(1).strip()
+    elif match:
         text = match.group(1).strip()
     else:
         text = re.sub(r"<think>.*?</think>", "", text, flags=re.S)
-        text = re.sub(r"</?(patient|think)\s*>", "", text).strip()
+        text = re.sub(r"<state>.*?(?:</state>|$)", "", text, flags=re.S)   # hidden state, never shown
+        text = re.sub(r"</?(patient|think|state|word)\s*>", "", text).strip()
         # Collapse an exact duplicated half (the model repeated itself).
         half = len(text) // 2
         if half > 40 and text[:half].strip() and text[:half].strip() == text[half:].strip():
