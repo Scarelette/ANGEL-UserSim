@@ -70,7 +70,7 @@ done
 python -m model_training.actor.build_sft_data \
     --inputs data/actor/sft_rollouts/NM_mask_p{1,2,3,4,5}.jsonl --output data/actor/sft_training.jsonl
 
-# 4. SFT: QLoRA r=64 / α=16, lr 1e-4, 5 epochs
+# 4. SFT: QLoRA r=64 / α=16, lr 1e-4, 5 epochs, loss on patient turns
 python -m model_training.actor.train_sft --output-dir models/Qwen-3-8B-Patient-SFT-Actor-5
 
 # 5. DPO pairs from the SFT Actor (paper: p1–p4, p6 and an earlier p1 test run = 6,901 pairs;
@@ -103,29 +103,36 @@ In step 5, each therapist turn works like this:
 4. The Claude judge scores the rest; the best and worst become a DPO pair.
 5. The best reply continues the conversation, for up to 8 turns.
 
+## Prompt format
+
+Every stage uses the same format: the Qwen3 chat template with thinking off
+(`chat_format.py`). The system prompt comes first, then therapist turns as
+`user` and patient turns as `assistant`. This holds for the rollout patients,
+SFT, DPO and `model_usage`.
+- **SFT** trains on whole conversations, with loss on the patient turns only.
+  Each patient turn follows the same `<|im_start|>assistant\n<think>\n\n</think>\n\n`
+  prefix the model sees when it generates (`--max-length`, default 8192 tokens).
+- **DPO** prompts are the conversation so far plus that prefix, as in the rollouts.
+
 ## Known issues
 
-These are kept as in the paper's runs.
+These are kept as in the paper's runs. The paper's Actor was trained before
+the prompt format above was unified: its rollouts used a plain-text prompt and
+its SFT used TRL's default chat formatting with loss on all tokens.
 
-1. **Training format differs between stages.**
-   - The rollouts render the dialogue as plain text.
-   - `train_sft` builds a `### System/User/Assistant` text field, but with the pinned TRL version SFTTrainer trains on the chat-formatted `messages` column instead. It uses max length 1024 and puts loss on all tokens.
-   - DPO uses the Qwen3 chat template.
-
-   Pin the versions in `requirements-actor.txt` to reproduce.
-2. **SFT rollouts stop early.** Each file stops at the first network that
+1. **SFT rollouts stop early.** Each file stops at the first network that
    `mask_generator` left unmasked, giving about 85 networks per file (423
    total). `--on-unmasked skip` continues past it.
-3. **`mask_generator` keeps some networks unmasked.** This happens when GPT-5
+2. **`mask_generator` keeps some networks unmasked.** This happens when GPT-5
    returns too few type labels or an unknown pattern. Separately, the patient
    prompt omits "Physiological Sensation" from its state categories.
-4. **Lowercasing.** About 30 % of SFT patient turns are lowercase: the reply
+3. **Lowercasing.** About 30 % of SFT patient turns are lowercase: the reply
    cleaner lowercases a reply when it removes role leakage.
-5. **Therapist roles.** In DPO rollouts the therapist sees its own turns as
+4. **Therapist roles.** In DPO rollouts the therapist sees its own turns as
    `user` turns; `--therapist-fix-roles` flips them.
-6. **Chinese text.** About 1.6 % of DPO pairs contain Chinese text from the
+5. **Chinese text.** About 1.6 % of DPO pairs contain Chinese text from the
    GPT-5 format fix.
-7. **Judge rubric.** Only `structure`, `specificity` and the entailment fields
+6. **Judge rubric.** Only `structure`, `specificity` and the entailment fields
    of the judge's rubric vary; the others are constants.
 
 ## Files
@@ -133,6 +140,7 @@ These are kept as in the paper's runs.
 ```
 mask_generator.py, mask_pattern.jsonl   step 1 (which edge types may be masked per disorder pattern)
 prompts.py                              patient prompt from a symptom network (verbatim)
+chat_format.py                          the one prompt format (Qwen3 chat template, thinking off)
 patient.py, therapist.py                patient models (prompted 30B / SFT Actor) and LLM therapist
 rollout_sft.py, build_sft_data.py       steps 2–3
 train_sft.py                            step 4

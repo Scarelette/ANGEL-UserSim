@@ -4,6 +4,9 @@ Hyperparameters as in the paper: 4-bit nf4 base, LoRA r=64 / alpha=16 /
 dropout=0.05 on all attention+MLP projections, lr 1e-4, 5 epochs, batch 4 x
 grad-accum 4, paged_adamw_32bit, warmup 3%, bf16.
 
+Each example is a whole conversation in the Qwen3 chat format the Actor uses
+everywhere (``chat_format``). The loss covers the patient turns only.
+
     python -m model_training.actor.train_sft \
         --train-file data/actor/sft_training.jsonl \
         --output-dir models/Qwen-3-8B-Patient-SFT-Actor-5
@@ -22,34 +25,11 @@ from transformers import (
     AutoModelForCausalLM,
     AutoTokenizer,
     BitsAndBytesConfig,
-    DataCollatorForLanguageModeling,
-    TrainingArguments,
 )
-from trl import SFTTrainer
+from trl import SFTConfig, SFTTrainer
 
 from angel_common.paths import DATA_DIR, MODELS_DIR, OUTPUTS_DIR, resolve_model, resolve_path
-
-
-def format_messages(example, eos_token: str):
-    system = user = assistant = ""
-    for msg in example["messages"]:
-        if msg["role"] == "system":
-            system = msg["content"]
-        elif msg["role"] == "user":
-            user = msg["content"]
-        elif msg["role"] == "assistant":
-            assistant = msg["content"]
-    # NOTE: keeps only the LAST user/assistant turn of each conversation.
-    text = f"""### System:
-{system}
-
-### User:
-{user}
-
-### Assistant:
-{assistant}{eos_token}
-"""
-    return {"text": text}
+from model_training.actor.chat_format import tokenize_for_sft
 
 
 def main():
@@ -62,6 +42,8 @@ def main():
                     help="Trainer output_dir (intermediate checkpoints)")
     ap.add_argument("--epochs", type=float, default=5)
     ap.add_argument("--lr", type=float, default=1e-4)
+    ap.add_argument("--max-length", type=int, default=8192,
+                    help="tokens per conversation; longer ones are truncated (a warning counts them)")
     ap.add_argument("--report-to", default="none")
     args = ap.parse_args()
 
@@ -93,7 +75,7 @@ def main():
         target_modules=["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"],
     )
 
-    training_arguments = TrainingArguments(
+    training_arguments = SFTConfig(
         output_dir=args.checkpoint_dir,
         per_device_train_batch_size=4,
         per_device_eval_batch_size=1,
@@ -108,25 +90,26 @@ def main():
         fp16=False,
         group_by_length=True,
         report_to=args.report_to,
+        max_length=args.max_length,
     )
 
     dataset = load_dataset("json", data_files=str(resolve_path(args.train_file)), split="train")
-    # The "messages" column is kept next to "text", as in the paper's run. With
-    # TRL >= 0.20 it makes SFTTrainer treat the data as conversational (chat
-    # template over all turns), so "text" is not what is trained on; see README.
-    dataset = dataset.map(
-        lambda ex: format_messages(ex, tokenizer.eos_token),
-        remove_columns=[c for c in dataset.column_names if c != "messages"],
-    )
-    print(dataset[0])
-    print(len(dataset))
+    dataset = dataset.map(lambda ex: tokenize_for_sft(tokenizer, ex["messages"]),
+                          remove_columns=dataset.column_names)
+    n_long = sum(len(ids) > args.max_length for ids in dataset["input_ids"])
+    if n_long:
+        print(f"WARNING: {n_long}/{len(dataset)} conversations exceed --max-length {args.max_length} "
+              "and will be truncated")
+    print(f"{len(dataset)} conversations")
 
+    # Pre-tokenized input_ids + assistant_masks: SFTTrainer only truncates and
+    # sets labels outside the patient turns to -100.
     trainer = SFTTrainer(
         model=model,
         args=training_arguments,
         train_dataset=dataset,
+        processing_class=tokenizer,
         peft_config=peft_config,
-        data_collator=DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm=False),
     )
 
     gc.collect()

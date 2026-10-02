@@ -32,6 +32,7 @@ from trl import DPOConfig, DPOTrainer
 
 from angel_common.env import get_env
 from angel_common.paths import DATA_DIR, MODELS_DIR, OUTPUTS_DIR, resolve_path
+from model_training.actor.chat_format import render
 
 SEED = 42
 DEVICE = "cuda"
@@ -138,7 +139,8 @@ def main():
     model.config.use_cache = False
 
     def preprocess(example):
-        prompt = tokenizer.apply_chat_template(example["context_messages"], tokenize=False, add_generation_prompt=True)
+        # same prompt the Actor sees in the rollouts and at inference (thinking off)
+        prompt = render(tokenizer, example["context_messages"], add_generation_prompt=True)
         return {"prompt": prompt, "chosen": example["chosen"], "rejected": example["rejected"]}
 
     dataset = load_dataset("json", data_files=str(resolve_path(args.train_file)))["train"]

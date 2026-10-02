@@ -6,7 +6,8 @@
 * ``AdapterPatient`` — DPO rollouts. Qwen3-8B (4-bit) + the SFT LoRA adapter,
   sampling several candidates per turn.
 
-Both render the conversation as plain text (not the chat template).
+Both render the conversation with the chat template (``chat_format``), the
+same format SFT, DPO and inference use.
 """
 
 from __future__ import annotations
@@ -15,6 +16,8 @@ from typing import List, Optional, Union
 
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
+
+from model_training.actor.chat_format import render, to_chat_messages
 
 DTYPE = torch.bfloat16 if torch.cuda.is_available() else torch.float32
 
@@ -43,16 +46,14 @@ class PromptedPatient:
     def set_system_prompt(self, system_prompt: str) -> None:
         self.patient_prompt = system_prompt
 
-    def _build_prompt(self, conversation, window_size: int = 6) -> str:
-        prompt = self.patient_prompt + "\n\nConversation so far:\n"
-        for turn in conversation[-window_size:]:
-            prompt += f"{turn['role']}: {turn['content']}\n"
-        return prompt + "\npatient:"
+    def _build_prompt(self, conversation) -> str:
+        return render(self.tokenizer, to_chat_messages(self.patient_prompt, conversation), add_generation_prompt=True)
 
     def generate(self, conversation, max_new_tokens: int = 128, temperature: float = 0.8,
-                 top_p: float = 0.9, window_size: int = 6) -> str:
-        prompt = self._build_prompt(conversation, window_size)
-        inputs = self.tokenizer(prompt, return_tensors="pt").to(self.model.device)
+                 top_p: float = 0.9) -> str:
+        prompt = self._build_prompt(conversation)
+        inputs = self.tokenizer(prompt, return_tensors="pt", add_special_tokens=False).to(self.model.device)
+        input_len = inputs["input_ids"].shape[-1]
         with torch.no_grad():
             outputs = self.model.generate(
                 **inputs,
@@ -62,8 +63,7 @@ class PromptedPatient:
                 top_p=top_p,
                 pad_token_id=self.tokenizer.eos_token_id,
             )
-        decoded = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
-        return self._clean_reply(decoded[len(prompt):].strip())
+        return self._clean_reply(self.tokenizer.decode(outputs[0][input_len:], skip_special_tokens=True).strip())
 
     @staticmethod
     def _clean_reply(text: str) -> str:
@@ -105,40 +105,14 @@ class AdapterPatient:
     def set_system_prompt(self, system_prompt: str) -> None:
         self.patient_prompt = system_prompt
 
-    @staticmethod
-    def _normalize_role(role: str) -> str:
-        r = (role or "").lower()
-        if r in ("user", "therapist"):
-            return "therapist"
-        if r in ("assistant", "patient"):
-            return "patient"
-        return "other"
-
-    def _build_prompt(self, conversation, window_size: int = 6) -> str:
-        turns = []
-        for t in conversation or []:
-            role = self._normalize_role(t.get("role", ""))
-            if role != "other":
-                turns.append((role, (t.get("content") or "").strip()))
-        prompt = self.patient_prompt.strip() + "\n\nConversation so far:\n"
-        for role, content in turns[-window_size:]:
-            if content:
-                prompt += f"{role}: {content}\n"
-        prompt += (
-            "\nNow respond as the patient.\n"
-            "CRITICAL FORMAT RULES:\n"
-            "- Output EXACTLY ONE <state>...</state> block and EXACTLY ONE <word>...</word> block.\n"
-            "- Do NOT output multiple states/words.\n"
-            "Return only:\n"
-            "<state>...</state>\n"
-            "<word>...</word>\n"
-        )
-        return prompt
+    def _build_prompt(self, conversation) -> str:
+        """Exactly the DPO training prompt: system prompt + full conversation."""
+        return render(self.tokenizer, to_chat_messages(self.patient_prompt, conversation), add_generation_prompt=True)
 
     def generate(self, conversation, max_new_tokens: int = 256, temperature: float = 0.8,
-                 top_p: float = 0.9, window_size: int = 6, n: int = 1) -> Union[str, List[str]]:
-        prompt = self._build_prompt(conversation, window_size)
-        inputs = self.tokenizer(prompt, return_tensors="pt").to(self.model.device)
+                 top_p: float = 0.9, n: int = 1) -> Union[str, List[str]]:
+        prompt = self._build_prompt(conversation)
+        inputs = self.tokenizer(prompt, return_tensors="pt", add_special_tokens=False).to(self.model.device)
         input_len = inputs["input_ids"].shape[-1]
         with torch.no_grad():
             outputs = self.model.generate(
