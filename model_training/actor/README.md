@@ -60,13 +60,15 @@ for i in 1 2 3 4 5 6; do
 done
 
 # 2. SFT conversations: prompted 30B patient ↔ therapist, 15 exchanges each
+#    (networks mask_generator left unmasked are skipped; add --on-unmasked stop to
+#    end each file at the first one, as the paper's run did)
 for i in 1 2 3 4 5; do
   python -m model_training.actor.rollout_sft --input data/actor/masked/NM_mask_p$i.jsonl \
       --output data/actor/sft_rollouts/NM_mask_p$i.jsonl \
       --patient-model Qwen/Qwen3-30B-A3B-Instruct-2507 --max-turns 15
 done
 
-# 3. SFT examples (reproduces the paper's 423-conversation file exactly)
+# 3. SFT examples (with --on-unmasked stop in step 2: the paper's 423-conversation file)
 python -m model_training.actor.build_sft_data \
     --inputs data/actor/sft_rollouts/NM_mask_p{1,2,3,4,5}.jsonl --output data/actor/sft_training.jsonl
 
@@ -120,9 +122,10 @@ These are kept as in the paper's runs. The paper's Actor was trained before
 the prompt format above was unified: its rollouts used a plain-text prompt and
 its SFT used TRL's default chat formatting with loss on all tokens.
 
-1. **SFT rollouts stop early.** Each file stops at the first network that
-   `mask_generator` left unmasked, giving about 85 networks per file (423
-   total). `--on-unmasked skip` continues past it.
+1. **SFT rollouts stopped early.** The paper's run stopped each file at the
+   first network that `mask_generator` left unmasked, giving about 85 networks
+   per file (423 total). `rollout_sft` now skips those networks;
+   `--on-unmasked stop` reproduces the paper's run.
 2. **`mask_generator` keeps some networks unmasked.** This happens when GPT-5
    returns too few type labels or an unknown pattern. Separately, the patient
    prompt omits "Physiological Sensation" from its state categories.

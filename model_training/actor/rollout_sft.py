@@ -30,6 +30,12 @@ def _should_stop(text: str) -> bool:
     return any(p in (text or "").lower() for p in stop_phrases)
 
 
+def is_masked(item: dict) -> bool:
+    """True if mask_generator tagged every edge; rows it left unmasked hold raw {from, to} edges."""
+    edges = (item.get("new_graph") or []) + (item.get("mask") or [])
+    return bool(edges) and all(isinstance(e, dict) and "value" in e and "tag" in e for e in edges)
+
+
 def arena(patient: PromptedPatient, therapist: AITherapist, patient_list, mask_list,
           max_turns: int = 15, verbose: bool = True, early_stop: bool = False):
     patient.set_system_prompt(generate_system_prompt(patient_list, mask_list))
@@ -70,9 +76,9 @@ def main():
     ap.add_argument("--start", type=int, default=0, help="first row index (for sharding)")
     ap.add_argument("--end", type=int, default=None, help="stop before this row index")
     ap.add_argument("--quiet", action="store_true")
-    ap.add_argument("--on-unmasked", choices=["stop", "skip"], default="stop",
-                    help="row left unmasked by mask_generator: 'stop' ends the file there, as the "
-                         "paper's run did (423 conversations); 'skip' continues past it")
+    ap.add_argument("--on-unmasked", choices=["skip", "stop"], default="skip",
+                    help="row left unmasked by mask_generator: 'skip' continues past it; 'stop' ends "
+                         "the file there, as the paper's run did (423 conversations)")
     args = ap.parse_args()
 
     patient = PromptedPatient(args.patient_model)
@@ -80,23 +86,25 @@ def main():
 
     out = Path(args.output)
     out.parent.mkdir(parents=True, exist_ok=True)
+    written = skipped = 0
     with open(resolve_path(args.input)) as reader, open(out, "a", buffering=1) as f_out:
         for idx, line in enumerate(reader):
             if idx < args.start or (args.end is not None and idx >= args.end) or not line.strip():
                 continue
             item = json.loads(line)
-            try:
-                conversation = arena(patient, therapist, item["new_graph"], item["mask"],
-                                     max_turns=args.max_turns, verbose=not args.quiet)
-            except (KeyError, TypeError) as e:
-                # Rows left unmasked by mask_generator have untagged edges. The
-                # paper's run ended at the first such row in each file.
+            if not is_masked(item):
+                # The paper's run ended at the first such row in each file.
                 if args.on_unmasked == "stop":
-                    print(f"[stop at row {idx}] unmasked network:", type(e).__name__, e)
+                    print(f"[stop at row {idx}] unmasked network")
                     break
-                print(f"[skip row {idx}] unmasked network:", type(e).__name__, e)
+                print(f"[skip row {idx}] unmasked network")
+                skipped += 1
                 continue
+            conversation = arena(patient, therapist, item["new_graph"], item["mask"],
+                                 max_turns=args.max_turns, verbose=not args.quiet)
             f_out.write(json.dumps({"messages": conversation}, ensure_ascii=False) + "\n")
+            written += 1
+    print(f"wrote {written} conversations, skipped {skipped} unmasked networks")
 
 
 if __name__ == "__main__":
