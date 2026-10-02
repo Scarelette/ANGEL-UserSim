@@ -64,9 +64,11 @@ def arena_with_dpo(
     deduper: Optional[Deduper] = None,
     num_candidates: int = 5,
     min_gap: float = 0.0,
+    paper_prompt: bool = False,
 ) -> Tuple[List[Dict[str, str]], List[Dict[str, Any]]]:
     try:
-        patient_system_prompt = generate_system_prompt(patient_list or [], mask_list or [])
+        patient_system_prompt = generate_system_prompt(patient_list or [], mask_list or [],
+                                                       paper_categories=paper_prompt)
     except Exception as e:
         print("[generate_system_prompt failed]", type(e).__name__, e)
         return [], []
@@ -237,6 +239,8 @@ def main():
     ap.add_argument("--start", type=int, default=0, help="first row index (for sharding)")
     ap.add_argument("--end", type=int, default=None, help="stop before this row index")
     ap.add_argument("--verbose", action="store_true")
+    ap.add_argument("--paper-prompt", action="store_true",
+                    help="leave \"Physiological Sensation\" out of the patient prompt's states, as the paper's run did")
     args = ap.parse_args()
 
     patient = AdapterPatient(resolve_model("base", args.base_model), sft_adapter=str(resolve_path(args.sft_adapter)))
@@ -256,6 +260,7 @@ def main():
                 patient, therapist, item["new_graph"], item["mask"],
                 max_turns=args.max_turns, verbose=args.verbose, deduper=deduper,
                 num_candidates=args.num_candidates, min_gap=args.min_gap,
+                paper_prompt=args.paper_prompt,
             )
             if not conv:
                 continue

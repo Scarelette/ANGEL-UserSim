@@ -114,28 +114,40 @@ SFT, DPO and `model_usage`.
 - **SFT** trains on whole conversations, with loss on the patient turns only.
   Each patient turn follows the same `<|im_start|>assistant\n<think>\n\n</think>\n\n`
   prefix the model sees when it generates (`--max-length`, default 8192 tokens).
+  One difference: in the conversation history, earlier patient turns keep that
+  empty think block in SFT, while the chat template drops it at inference and
+  in DPO.
 - **DPO** prompts are the conversation so far plus that prefix, as in the rollouts.
+
+## Differences from the paper's run
+
+- **Prompt format.** The paper's Actor was trained before the format above was
+  unified: its rollouts used a plain-text prompt and its SFT used TRL's default
+  chat formatting with loss on all tokens.
+- **SFT rollouts.** The paper's run stopped each file at the first network that
+  `mask_generator` left unmasked, giving about 85 networks per file (423 total).
+  `rollout_sft` now skips those networks; `--on-unmasked stop` reproduces the
+  paper's run.
+- **Masking.** The paper's run took GPT-5's first reply, so a network stayed
+  unmasked when GPT-5 returned too few type labels or an unknown pattern.
+  `mask_generator` now retries until both are valid; `--paper-compat`
+  reproduces the paper's run.
+- **Patient prompt.** The paper's patient prompt left "Physiological Sensation"
+  out of its state categories, so those states were never listed.
+  `rollout_sft` and `rollout_dpo` now include them; `--paper-prompt` reproduces
+  the paper's run.
 
 ## Known issues
 
-These are kept as in the paper's runs. The paper's Actor was trained before
-the prompt format above was unified: its rollouts used a plain-text prompt and
-its SFT used TRL's default chat formatting with loss on all tokens.
+These are kept as in the paper's runs.
 
-1. **SFT rollouts stopped early.** The paper's run stopped each file at the
-   first network that `mask_generator` left unmasked, giving about 85 networks
-   per file (423 total). `rollout_sft` now skips those networks;
-   `--on-unmasked stop` reproduces the paper's run.
-2. **`mask_generator` keeps some networks unmasked.** This happens when GPT-5
-   returns too few type labels or an unknown pattern. Separately, the patient
-   prompt omits "Physiological Sensation" from its state categories.
-3. **Lowercasing.** About 30 % of SFT patient turns are lowercase: the reply
+1. **Lowercasing.** About 30 % of SFT patient turns are lowercase: the reply
    cleaner lowercases a reply when it removes role leakage.
-4. **Therapist roles.** In DPO rollouts the therapist sees its own turns as
+2. **Therapist roles.** In DPO rollouts the therapist sees its own turns as
    `user` turns; `--therapist-fix-roles` flips them.
-5. **Chinese text.** About 1.6 % of DPO pairs contain Chinese text from the
+3. **Chinese text.** About 1.6 % of DPO pairs contain Chinese text from the
    GPT-5 format fix.
-6. **Judge rubric.** Only `structure`, `specificity` and the entailment fields
+4. **Judge rubric.** Only `structure`, `specificity` and the entailment fields
    of the judge's rubric vary; the others are constants.
 
 ## Files

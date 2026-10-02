@@ -11,6 +11,10 @@ for that pattern are moved to ``mask``; the rest go to ``new_graph``.
 
 The paper ran this six times with --mask-pct 0.1 ... 0.6 (files p1 ... p6).
 
+Both GPT-5 calls are retried until the pattern is one of the known names and
+there is exactly one label per symptom. The paper's run took the first reply,
+so some networks stayed unmasked; ``--paper-compat`` reproduces that.
+
     python -m model_training.actor.mask_generator \
         --input data/actor/network_models.jsonl \
         --output data/actor/masked/NM_mask_p1.jsonl --mask-pct 0.1
@@ -43,7 +47,18 @@ def read_mask_pattern(path: Path = DEFAULT_PATTERNS) -> dict:
     return mask_pattern
 
 
-def get_pattern(symptoms, mask_type) -> str:
+def match_pattern(reply: str, patterns) -> str | None:
+    """Map GPT's reply to a pattern name, ignoring case, quotes and markdown."""
+    by_lower = {p.lower(): p for p in patterns}
+    text = re.sub(r"[*`'\".]", "", reply or "").strip().lower()
+    if text in by_lower:
+        return by_lower[text]
+    found = [p for low, p in by_lower.items() if re.search(rf"\b{re.escape(low)}\b", text)]
+    return found[0] if len(found) == 1 else None
+
+
+def get_pattern(symptoms, mask_type, max_retry: int = 5, paper_compat: bool = False) -> str:
+    mask_type = list(mask_type)
     prompt = f"""Below are the patient's symptoms:
 
 {symptoms}
@@ -53,11 +68,19 @@ Please classify the patient into one of the following categories:
 
 Only output the category name. Do not provide any explanation."""
 
-    # tag=3: no tag / refusal validation (original call: getOutput(prompt, 3)).
-    return get_output(prompt, tag=3, max_completion_tokens=_MAX_TOKENS).strip()
+    for attempt in range(1 if paper_compat else max_retry):
+        # tag=3: no tag / refusal validation (original call: getOutput(prompt, 3)).
+        reply = get_output(prompt, tag=3, max_completion_tokens=_MAX_TOKENS).strip()
+        if paper_compat:
+            return reply
+        pattern = match_pattern(reply, mask_type)
+        if pattern is not None:
+            return pattern
+        print(f"[pattern attempt {attempt}] unknown pattern: {reply!r}")
+    raise ValueError(f"no known pattern after {max_retry} attempts (last reply: {reply!r})")
 
 
-def node_labeler(symptoms, max_retry: int = 5) -> dict:
+def node_labeler(symptoms, max_retry: int = 5, paper_compat: bool = False) -> dict:
     for attempt in range(max_retry):
         print("Attempt:", attempt)
         prompt = f"""
@@ -76,16 +99,23 @@ def node_labeler(symptoms, max_retry: int = 5) -> dict:
     You should give each symptom a type and output the type list. The explanation is enclosed within <exp>...</exp>. The type list is enclosed within <type>[Behavior, Emotion, Physiological Sensation, Cognition,...]</type>. 
     """
         output = get_output(prompt, max_completion_tokens=_MAX_TOKENS)
-        # NOTE: a reply without <type> raises here (no retry), leaving the network
-        # unmasked -- kept as in the original run.
-        type_text = extract_tag_content(output, "type").strip()
-        type_list = re.findall(r"Behavior|Emotion|Cognition|Stimulus|Physiological Sensation", type_text)
+        type_text = extract_tag_content(output, "type")
+        if paper_compat:
+            # The paper's run: a reply without <type> raises here, and too few
+            # labels raise IndexError below; the caller keeps the network unmasked.
+            type_text = type_text.strip()
+        type_list = re.findall(r"Behavior|Emotion|Cognition|Stimulus|Physiological Sensation", type_text or "")
         print("Type:", type_list)
-        if type_list:
-            # NOTE: raises IndexError if GPT returns fewer labels than symptoms;
-            # the caller then keeps the network unmasked (original behavior).
-            return {symptoms[i]: type_list[i] for i in range(len(symptoms))}
-    return {}
+        if paper_compat:
+            if type_list:
+                return {symptoms[i]: type_list[i] for i in range(len(symptoms))}
+        elif len(type_list) == len(symptoms):
+            return dict(zip(symptoms, type_list))
+        else:
+            print(f"[label attempt {attempt}] {len(type_list)} labels for {len(symptoms)} symptoms")
+    if paper_compat:
+        return {}
+    raise ValueError(f"no label list matching {len(symptoms)} symptoms after {max_retry} attempts")
 
 
 def graph_label_match(graph, node_dict) -> list:
@@ -102,10 +132,10 @@ def graph_label_match(graph, node_dict) -> list:
     return graph_labeled
 
 
-def get_mask(symptoms, graph, percentage: float, mask_pattern: dict):
-    pattern = get_pattern(symptoms, mask_pattern.keys())
+def get_mask(symptoms, graph, percentage: float, mask_pattern: dict, paper_compat: bool = False):
+    pattern = get_pattern(symptoms, mask_pattern.keys(), paper_compat=paper_compat)
     possible_masks = mask_pattern[pattern]
-    node_dict = node_labeler(symptoms)
+    node_dict = node_labeler(symptoms, paper_compat=paper_compat)
     graph_labeled = graph_label_match(graph, node_dict)
 
     random.shuffle(graph_labeled)
@@ -120,7 +150,7 @@ def get_mask(symptoms, graph, percentage: float, mask_pattern: dict):
 
 
 def process_graphs(input_file: Path, output_file: Path, err_file: Path, mask_percentage: float,
-                   patterns_file: Path = DEFAULT_PATTERNS) -> None:
+                   patterns_file: Path = DEFAULT_PATTERNS, paper_compat: bool = False) -> None:
     mask_pattern = read_mask_pattern(patterns_file)
     output_file.parent.mkdir(parents=True, exist_ok=True)
     with open(input_file) as reader, open(output_file, "a") as f, open(err_file, "a") as f_err:
@@ -135,9 +165,9 @@ def process_graphs(input_file: Path, output_file: Path, err_file: Path, mask_per
                 f_err.write(json.dumps(obj) + "\n")
                 continue
             try:
-                mask, new_graph = get_mask(symptoms, graph, mask_percentage, mask_pattern)
+                mask, new_graph = get_mask(symptoms, graph, mask_percentage, mask_pattern, paper_compat)
             except Exception as e:  # unknown pattern, label/symptom count mismatch, API failure
-                # Original behavior: keep the network unmasked. NOTE: new_graph then
+                # Keep the network unmasked, as the original run did. new_graph then
                 # holds raw {"from","to"} edges without "value"/"tag"; the rollout
                 # scripts skip such rows.
                 print("[mask failed, keeping graph unmasked]", type(e).__name__, e)
@@ -158,13 +188,17 @@ def main():
     ap.add_argument("--mask-pct", type=float, default=0.4, help="max fraction of edges to mask")
     ap.add_argument("--patterns", default=str(DEFAULT_PATTERNS))
     ap.add_argument("--seed", type=int, default=None, help="random seed (original runs were unseeded)")
+    ap.add_argument("--paper-compat", action="store_true",
+                    help="take GPT-5's first pattern and label replies, as the paper's run did "
+                         "(leaves some networks unmasked)")
     args = ap.parse_args()
 
     if args.seed is not None:
         random.seed(args.seed)
     out = Path(args.output)
     err = Path(args.err_output) if args.err_output else out.with_suffix(".err.jsonl")
-    process_graphs(resolve_path(args.input), out, err, args.mask_pct, resolve_path(args.patterns))
+    process_graphs(resolve_path(args.input), out, err, args.mask_pct, resolve_path(args.patterns),
+                   args.paper_compat)
 
 
 if __name__ == "__main__":
