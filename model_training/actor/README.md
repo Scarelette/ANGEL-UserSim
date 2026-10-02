@@ -44,7 +44,8 @@ Optional:
 - W&B logging for DPO with `--report-to wandb` (plus `WANDB_API_KEY`).
 
 **Input:** one JSON object per case with `symptoms` (node names) and `graph`
-(`{"from", "to"}` edges): the Observer's network output. Synthetic one-row
+(`{"from", "to"}` edges): the Observer's network output (see
+[`model_training/observer`](../observer/)). Synthetic one-row
 examples of every file in the pipeline are in `data/examples/actor/`.
 
 ## Steps
@@ -52,10 +53,6 @@ examples of every file in the pipeline are in `data/examples/actor/`.
 Every path below is a default and can be changed with its flag.
 
 ```bash
-# 0. symptom networks from case complaints, with the trained Observer
-python -m model_training.observer.predict_network --input data/observer/case_report_final_all.jsonl \
-    --output data/actor/network_models.jsonl
-
 # 1. mask 10–60 % of the maskable edges (one file per mask rate)
 for i in 1 2 3 4 5 6; do
   python -m model_training.actor.mask_generator --input data/actor/network_models.jsonl \
