@@ -7,6 +7,8 @@ from typing import Callable, Dict, List, Optional, Tuple
 # --- regex ---
 STATE_RE = re.compile(r"<state>(.*?)</state>", re.S | re.I)
 WORD_RE  = re.compile(r"<word>(.*?)</word>",  re.S | re.I)
+# Chinese / Japanese / Korean characters and CJK punctuation; replies must be English.
+CJK_RE   = re.compile(r"[\u3000-\u303f\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uac00-\ud7af\uf900-\ufaff\uff00-\uffef]")
 
 # --- strip instruction-echo / wrapper artifacts (reduces jailbreak/content_filter triggers) ---
 ECHO_PATTERNS = [
@@ -79,7 +81,7 @@ def coerce_last_pair(text: str) -> str:
 def parse_single_pair(text: str) -> Tuple[bool, Optional[str], Optional[str], List[str]]:
     """
     Strict parse: must contain exactly one <state> and one <word>, both non-empty,
-    and must NOT be the placeholder/template pair.
+    must NOT be the placeholder/template pair, and must not contain CJK text.
     """
     issues: List[str] = []
     if not text:
@@ -104,6 +106,8 @@ def parse_single_pair(text: str) -> Tuple[bool, Optional[str], Optional[str], Li
         issues.append("empty word")
     if _is_placeholder(s, w):
         issues.append("placeholder template pair")
+    if CJK_RE.search(s) or CJK_RE.search(w):
+        issues.append("non-English (CJK) text")
 
     if issues:
         return False, None, None, issues
@@ -112,7 +116,7 @@ def parse_single_pair(text: str) -> Tuple[bool, Optional[str], Optional[str], Li
 def build_format_fix_prompt(draft: str) -> str:
     """
     Safety-friendly format-fix prompt (avoid jailbreak-y phrasing).
-    Also explicitly forbids placeholder/template text.
+    Also explicitly forbids placeholder/template text and asks for English.
     """
     draft = sanitize_echo(draft)
     return (
@@ -123,6 +127,7 @@ def build_format_fix_prompt(draft: str) -> str:
         "- Output only these two blocks.\n"
         "- Keep the meaning as close as possible.\n"
         "- First-person.\n"
+        "- Write in English only, even if the draft contains other languages.\n"
         "- Do not include any extra headers, examples, reminders, or meta text.\n"
         "- Do NOT output placeholder/template text (e.g., 'Your new state during the conversation').\n"
         "- If multiple pairs appear, keep the first non-placeholder pair.\n\n"

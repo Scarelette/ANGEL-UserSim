@@ -61,9 +61,8 @@ def main() -> None:
         AutoTokenizer,
         BitsAndBytesConfig,
         DataCollatorForLanguageModeling,
-        TrainingArguments,
     )
-    from trl import SFTTrainer
+    from trl import SFTConfig, SFTTrainer
 
     from model_training.observer.data import load_sft_text_dataset
 
@@ -95,7 +94,10 @@ def main() -> None:
         target_modules=["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"],
     )
 
-    training_arguments = TrainingArguments(
+    # SFTConfig, not transformers.TrainingArguments: TRL 0.27.1 converts the
+    # latter to an SFTConfig and crashes with transformers 5 (KeyError
+    # 'push_to_hub_token'). Same fields, so the resulting config is identical.
+    training_arguments = SFTConfig(
         output_dir=args.checkpoint_dir,
         per_device_train_batch_size=args.batch_size,
         per_device_eval_batch_size=1,

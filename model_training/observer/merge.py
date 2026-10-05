@@ -25,7 +25,7 @@ def main() -> None:
     p.add_argument("--device", default="auto", help="device_map for loading ('auto' or 'cpu').")
     p.add_argument("--rebuild-clean", action="store_true",
                    help="Re-instantiate a fresh model from config and load the merged state dict "
-                        "(as done for Qwen3-Observer-800) so no PEFT/quantization wrappers remain.")
+                        "(as done for Angel-Observer) so no PEFT/quantization wrappers remain.")
     p.add_argument("--tokenizer", default=None, help="Tokenizer source (default: --base).")
     args = p.parse_args()
 

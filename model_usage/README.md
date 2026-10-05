@@ -22,28 +22,35 @@ your description ──► Observer ──► detailed profile ──► Actor �
 pip install -r model_usage/requirements-usage.txt
 ```
 
-**2. Get the two models** (about 16 GB each): `Qwen3-Observer-800` and
-`qwen3-8b-dpo-merged`. Put them in the repository's `models/` folder:
+**2. Get the two models** (about 16 GB each). You can skip this step: if
+they aren't found locally, Angel downloads them from Hugging Face on first use:
 
-```
-models/Qwen3-Observer-800/
-models/qwen3-8b-dpo-merged/
+| Model | Hugging Face | Local folder |
+|---|---|---|
+| Observer | [`ChengLi0228/Angel-Observer`](https://huggingface.co/ChengLi0228/Angel-Observer) | `models/Angel-Observer/` |
+| Actor | [`ChengLi0228/Angel-Actor`](https://huggingface.co/ChengLi0228/Angel-Actor) | `models/Angel-Actor/` |
+
+To keep a local copy in the repository's `models/` folder:
+
+```bash
+hf download ChengLi0228/Angel-Observer --local-dir models/Angel-Observer
+hf download ChengLi0228/Angel-Actor    --local-dir models/Angel-Actor
 ```
 
 If they are somewhere else, tell Angel where. Either add these two lines to
 `.env` in the repository root:
 
 ```
-ANGEL_OBSERVER_MODEL=/path/to/Qwen3-Observer-800
-ANGEL_ACTOR_MODEL=/path/to/qwen3-8b-dpo-merged
+ANGEL_OBSERVER_MODEL=/path/to/Angel-Observer
+ANGEL_ACTOR_MODEL=/path/to/Angel-Actor
 ```
 
 or export them in your shell. `export` is needed; without it Python does not
 see the variables:
 
 ```bash
-export ANGEL_OBSERVER_MODEL=/path/to/Qwen3-Observer-800
-export ANGEL_ACTOR_MODEL=/path/to/qwen3-8b-dpo-merged
+export ANGEL_OBSERVER_MODEL=/path/to/Angel-Observer
+export ANGEL_ACTOR_MODEL=/path/to/Angel-Actor
 ```
 
 **3. Use a machine with a GPU** (40 GB or more). On a Slurm cluster, get a GPU
@@ -158,8 +165,8 @@ the models and the engine, either in `.env` or with `export`:
 
 | Setting | Default | |
 |---|---|---|
-| `ANGEL_OBSERVER_MODEL` | `models/Qwen3-Observer-800` | Observer model folder (or Hugging Face id) |
-| `ANGEL_ACTOR_MODEL` | `models/qwen3-8b-dpo-merged` | Actor model folder (or Hugging Face id) |
+| `ANGEL_OBSERVER_MODEL` | `models/Angel-Observer` if present, else `ChengLi0228/Angel-Observer` | Observer model folder (or Hugging Face id) |
+| `ANGEL_ACTOR_MODEL` | `models/Angel-Actor` if present, else `ChengLi0228/Angel-Actor` | Actor model folder (or Hugging Face id) |
 | `ANGEL_BACKEND` | `auto` | `auto` uses vLLM if it works, else transformers; also `vllm`, `hf`, `stub` |
 | `ANGEL_VLLM_GPU_MEM` | `0.4` | share of GPU memory vLLM may use |
 

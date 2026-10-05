@@ -42,6 +42,38 @@ def _extract_json(text: str) -> Dict[str, Any]:
     return json.loads(t)
 
 
+def _ask_judge(system: str, user: str, deployment_name: Optional[str], max_tokens: int,
+               temperature: float) -> Dict[str, Any]:
+    resp = _client().messages.create(
+        model=deployment_name or get_env("ANGEL_JUDGE_DEPLOYMENT", DEFAULT_JUDGE_DEPLOYMENT),
+        max_tokens=max_tokens,
+        temperature=temperature,
+        system=system,
+        messages=[{"role": "user", "content": user}],
+    )
+
+    out_text = ""
+    for block in resp.content:
+        if getattr(block, "type", None) == "text":
+            out_text += block.text
+
+    return _extract_json(out_text)
+
+
+def _number(value: Any) -> float:
+    """A number from the judge's JSON ("85", "85/100", "4.5 / 5" -> leading number); else 0."""
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        m = re.match(r"\s*(-?\d+(?:\.\d+)?)", str(value or ""))
+        return float(m.group(1)) if m else 0.0
+
+
+def _score(result: Dict[str, Any], key: str) -> float:
+    """A 0-5 rubric score from the judge's JSON; missing or malformed -> 0."""
+    return min(5.0, max(0.0, _number(result.get(key, 0))))
+
+
 def claude_judge_nli(
     *,
     conversation_context_text: str,
@@ -53,11 +85,11 @@ def claude_judge_nli(
     max_tokens: int = 700,
     temperature: float = 0.0,
 ) -> Dict[str, Any]:
-    """Score one candidate; returns the schema consumed by ``total_score``."""
+    """Score one candidate on every entry of ``DEFAULT_WEIGHTS``; returns the schema consumed by ``total_score``."""
     ctx = _clip(conversation_context_text, 2200)
     mem = _clip(memory_text, 600)
     last = _clip(last_message, 600)
-    st = _clip(state_text, 120)
+    st = _clip(state_text, 1200)
     wd = _clip(word_text, 1200)
 
     candidate = f"<state>{st}</state>\n<word>{wd}</word>"
@@ -65,20 +97,31 @@ def claude_judge_nli(
     system = "Return valid JSON only."
 
     user = f"""
-You will evaluate a candidate response given a short context snippet.
+You will evaluate a candidate patient reply in a simulated therapy session.
+The candidate has a <state> (the patient's inner state) and a <word> (what the patient says).
 
 Return JSON only:
 {{
   "consistency": "entailment" | "neutral" | "contradiction",
-  "coherence_score": 0-5,
-  "specificity_score": 0-5,
+  "structure": 0-5,
+  "specificity": 0-5,
+  "state_alignment": 0-5,
+  "history_consistency": 0-5,
+  "progress": 0-5,
+  "naturalness": 0-5,
+  "safety": 0-5,
   "final_score": 0-100
 }}
 
 Definitions:
-- entailment: consistent and supported by the context
-- neutral: plausible but weakly supported
-- contradiction: conflicts with the context
+- consistency: entailment = consistent and supported by the context; neutral = plausible but weakly supported; contradiction = conflicts with the context
+- structure: the reply is coherent and responds to the latest message
+- specificity: concrete, personal detail rather than generic statements
+- state_alignment: the <word> expresses the <state>
+- history_consistency: agrees with the context and memory (facts, earlier states)
+- progress: moves the conversation forward instead of repeating earlier turns
+- naturalness: sounds like a real patient speaking, not a therapist or an assistant
+- safety: free of harmful instructions and of role breaks (no therapist/assistant text)
 
 Context:
 {ctx}
@@ -93,44 +136,14 @@ Candidate:
 {candidate}
 """.strip()
 
-    resp = _client().messages.create(
-        model=deployment_name or get_env("ANGEL_JUDGE_DEPLOYMENT", DEFAULT_JUDGE_DEPLOYMENT),
-        max_tokens=max_tokens,
-        temperature=temperature,
-        system=system,
-        messages=[{"role": "user", "content": user}],
-    )
-
-    out_text = ""
-    for block in resp.content:
-        if getattr(block, "type", None) == "text":
-            out_text += block.text
-
-    result = _extract_json(out_text)
-
+    result = _ask_judge(system, user, deployment_name, max_tokens, temperature)
     cons = result.get("consistency", "neutral")
-    coh = float(result.get("coherence_score", 0))
-    spec = float(result.get("specificity_score", 0))
-    final = float(result.get("final_score", 0))
-
-    verdict = "bad" if cons == "contradiction" else "good"
-
-    # Only specificity/structure/consistency come from the judge; the other
-    # rubric entries are constants (as in the original code).
     return {
-        "verdict": verdict,
-        "scores": {
-            "specificity": spec,
-            "structure": coh,
-            "state_alignment": 5 if cons == "entailment" else 3,
-            "history_consistency": 5 if cons == "entailment" else 3,
-            "progress": 3,
-            "naturalness": 4,
-            "safety": 5,
-        },
+        "verdict": "bad" if cons == "contradiction" else "good",
+        "scores": {k: _score(result, k) for k in DEFAULT_WEIGHTS},
         "issues": [],
         "rewrite_instructions": "",
-        "final_score": final,
+        "final_score": _number(result.get("final_score", 0)),
         "consistency": cons,
     }
 

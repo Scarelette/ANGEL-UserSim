@@ -67,11 +67,10 @@ class PromptedPatient:
 
     @staticmethod
     def _clean_reply(text: str) -> str:
-        # Cut role leakage. NOTE: lowercases the reply when leakage is found;
-        # ~30% of the released SFT turns are lowercase because of this.
+        """Cut the reply at leaked role text ("therapist:", "assistant:", any case)."""
         for token in ["therapist:", "assistant:"]:
             if token in text.lower():
-                text = text.lower().split(token)[0]
+                text = text[:text.lower().index(token)]
         return text.strip()
 
 

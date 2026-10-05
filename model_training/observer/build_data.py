@@ -1,8 +1,8 @@
 """Build Observer SFT / GRPO data from case reports with GPT-5 (Azure OpenAI).
 
 Input: a JSONL of case reports with at least ``title`` and ``Complaints``
-(presenting-complaints text). The paper used 510 published psychotherapy case
-reports; those texts are not redistributed — see data/examples/observer/.
+(presenting-complaints text). The paper trained on 510 of the 516 published
+psychotherapy case reports in PSYCHE; those texts are not redistributed — see data/examples/observer/.
 
 Steps, in order (each is a subcommand; outputs default under data/observer/):
 

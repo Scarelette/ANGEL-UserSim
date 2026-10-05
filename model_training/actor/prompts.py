@@ -7,14 +7,11 @@ Do not reword these: the Actor was trained on them.
 """
 
 
-# State categories listed in the prompt, in order. The paper's run left out
-# "Physiological Sensation", so those nodes never appeared under ALLOWED STATES.
+# State categories listed in the prompt, in order.
 STATE_CATEGORIES = ["Cognition", "Emotion", "Physiological Sensation", "Behavior", "Stimulus"]
-PAPER_STATE_CATEGORIES = ["Cognition", "Emotion", "Behavior", "Stimulus"]
 
 
-def generate_system_prompt(symptom_graph: list, hidden_graph: list = None,
-                           paper_categories: bool = False) -> str:
+def generate_system_prompt(symptom_graph: list, hidden_graph: list = None) -> str:
     """
     Generate a Qwen deployment-ready SYSTEM_PROMPT integrating visible and hidden symptom graphs,
     and enforce output formatting with <think> and <word> tags.
@@ -22,7 +19,6 @@ def generate_system_prompt(symptom_graph: list, hidden_graph: list = None,
     Args:
         symptom_graph: list of visible symptom edges
         hidden_graph: optional list of hidden symptom edges (masked states)
-        paper_categories: omit "Physiological Sensation", as the paper's run did
     
     Returns:
         SYSTEM_PROMPT string
@@ -73,8 +69,7 @@ def generate_system_prompt(symptom_graph: list, hidden_graph: list = None,
             hidden_nodes.add(tgt)
 
     # Sort categories
-    category_order = PAPER_STATE_CATEGORIES if paper_categories else STATE_CATEGORIES
-    sorted_categories = [c for c in category_order if c in nodes_by_category]
+    sorted_categories = [c for c in STATE_CATEGORIES if c in nodes_by_category]
 
     # ---------------------------
     # Build ALLOWED STATES section

@@ -1,7 +1,7 @@
 """Observer prompts, output tags and the completion regex.
 
 The system prompts are verbatim from the training runs that produced
-Qwen3-Observer-800 — the checkpoint was tuned against these exact strings, so
+Angel-Observer — the checkpoint was tuned against these exact strings, so
 do not reword them.
 
 Stage 1 (S1): presenting complaints -> symptoms + external factors (nodes).

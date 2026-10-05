@@ -35,7 +35,7 @@ Settings this experiment reads from `.env`:
 | `ANGEL_THERAPIST_DEPLOYMENT` | therapist | `gpt-4.1` |
 | `ANGEL_GPT5_DEPLOYMENT` | profile-alignment and behavior judges | `gpt-5` |
 | `ANGEL_PATIENT_PSI_DEPLOYMENT`, `ANGEL_ROLEPLAY_DOH_DEPLOYMENT` | API baselines | `gpt-4`, `gpt-4o` |
-| `ANGEL_OBSERVER_MODEL`, `ANGEL_ACTOR_MODEL` | `angel`, `one_stage` | `models/Qwen3-Observer-800`, `models/qwen3-8b-dpo-merged` |
+| `ANGEL_OBSERVER_MODEL`, `ANGEL_ACTOR_MODEL` | `angel`, `one_stage` | `models/Angel-Observer`, `models/Angel-Actor` |
 | `EEYORE_MODEL` | `eeyore` | `liusiyang/eeyore_sft_epoch2_dpo_round2_epoch1_llama3.1_8B` |
 
 Optional:

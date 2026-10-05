@@ -1,0 +1,4 @@
+# Therapist fine-tuning data (GPT-5) and the Azure OpenAI fine-tuning job.
+openai==2.16.0
+# chunk: read the treatment-manual PDF
+pymupdf==1.27.2.2

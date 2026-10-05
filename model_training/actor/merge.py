@@ -11,7 +11,7 @@ Used twice in the Actor pipeline (see README):
     python -m model_training.actor.merge \
         --base-model models/qwen3-8b-sft-merged \
         --adapter models/qwen3-8b-dpo-lora \
-        --output models/qwen3-8b-dpo-merged
+        --output models/Angel-Actor
 
 The script verifies that the adapter actually changed the weights, so a merge
 that silently drops an adapter fails loudly instead of producing a copy of the

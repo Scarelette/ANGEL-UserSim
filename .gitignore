@@ -7,6 +7,11 @@
 *credentials*.json
 cookies.pkl
 
+# Your data (case reports, treatment manuals and everything built from them are
+# usually copyrighted). Only the synthetic examples are tracked.
+data/*
+!data/examples/
+
 # Model weights and training outputs
 models/*
 !models/README.md

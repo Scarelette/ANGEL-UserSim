@@ -4,7 +4,7 @@ Generation settings are fixed to the released demo's values. What you can set:
 
 - model weights: ``--observer-model`` / ``--actor-model``, else
   ``ANGEL_OBSERVER_MODEL`` / ``ANGEL_ACTOR_MODEL``, else
-  ``<repo>/models/Qwen3-Observer-800`` / ``<repo>/models/qwen3-8b-dpo-merged``,
+  ``<repo>/models/Angel-Observer`` / ``<repo>/models/Angel-Actor``,
   else a Hugging Face Hub id (``angel_common.paths.resolve_model``);
 - the inference engine: ``--backend``, else ``ANGEL_BACKEND`` (default ``auto``);
 - vLLM's GPU memory share: ``ANGEL_VLLM_GPU_MEM`` (default ``0.4``).
@@ -99,13 +99,13 @@ class RunnerConfig:
         if need_observer and not _looks_loadable(self.observer.model_path):
             problems.append(
                 f"observer model not found: {self.observer.model_path}\n"
-                "    export ANGEL_OBSERVER_MODEL=/path/to/Qwen3-Observer-800 (or put it in .env),\n"
+                "    export ANGEL_OBSERVER_MODEL=/path/to/Angel-Observer (or put it in .env),\n"
                 "    or pass --observer-model"
             )
         if need_actor and not _looks_loadable(self.actor.model_path):
             problems.append(
                 f"actor model not found: {self.actor.model_path}\n"
-                "    export ANGEL_ACTOR_MODEL=/path/to/qwen3-8b-dpo-merged (or put it in .env),\n"
+                "    export ANGEL_ACTOR_MODEL=/path/to/Angel-Actor (or put it in .env),\n"
                 "    or pass --actor-model"
             )
         return problems

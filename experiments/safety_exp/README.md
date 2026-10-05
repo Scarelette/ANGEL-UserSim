@@ -34,7 +34,7 @@ cp .env.example .env        # then fill in the values below — the only place t
 | `AZURE_OPENAI_DEPLOYMENT_GPT_4O`, `AZURE_OPENAI_DEPLOYMENT_GPT_5_2_CHAT` | their deployment names | `gpt-4o`, `gpt-5` |
 | `GOOGLE_CLOUD_PROJECT` (+ `gcloud auth application-default login`) | Gemini via Vertex AI | — |
 | `OPENROUTER_API_KEY` | Grok | — |
-| `ANGEL_OBSERVER_MODEL`, `ANGEL_ACTOR_MODEL` | the Angel patient | `models/Qwen3-Observer-800`, `models/qwen3-8b-dpo-merged` |
+| `ANGEL_OBSERVER_MODEL`, `ANGEL_ACTOR_MODEL` | the Angel patient | `models/Angel-Observer`, `models/Angel-Actor` |
 
 Only the providers you call are needed.
 

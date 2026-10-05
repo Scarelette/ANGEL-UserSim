@@ -12,7 +12,7 @@
 set -euo pipefail
 cd "${SLURM_SUBMIT_DIR:-$(pwd)}"          # submit from the repository root
 mkdir -p logs
-# Model locations (defaults: models/Qwen3-Observer-800, models/qwen3-8b-dpo-merged)
-# export ANGEL_OBSERVER_MODEL=/path/to/Qwen3-Observer-800
-# export ANGEL_ACTOR_MODEL=/path/to/qwen3-8b-dpo-merged
+# Model locations (defaults: models/Angel-Observer, models/Angel-Actor)
+# export ANGEL_OBSERVER_MODEL=/path/to/Angel-Observer
+# export ANGEL_ACTOR_MODEL=/path/to/Angel-Actor
 python model_usage/scripts/gpu_demo.py

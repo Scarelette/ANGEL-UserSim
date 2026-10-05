@@ -21,7 +21,7 @@ class Angel(AIPatient):
         self,
         profile: str = None,
         profile_dict: Dict[str, Any] = None,
-        model_name: Optional[str] = None,  # None -> ANGEL_ACTOR_MODEL / models/qwen3-8b-dpo-merged
+        model_name: Optional[str] = None,  # None -> ANGEL_ACTOR_MODEL / models/Angel-Actor
         device_map: str = "auto",
         torch_dtype: Optional[torch.dtype] = None,
     ):

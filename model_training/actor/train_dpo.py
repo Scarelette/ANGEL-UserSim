@@ -180,6 +180,11 @@ def main():
         trainer.add_callback(TrainingMonitorCallback())
         trainer.add_callback(KLMonitorCallback(tokenizer, dataset))
 
+    # Single-GPU script: with several GPUs visible (and no torchrun) the Trainer
+    # would wrap the 4-bit model in DataParallel and fail with "found at least
+    # two devices, cuda:0 and cuda:1". The Trainer does the same for
+    # model-parallel models.
+    trainer.args._n_gpu = 1
     trainer.train()
 
     Path(args.output_dir).mkdir(parents=True, exist_ok=True)

@@ -19,18 +19,10 @@ from model_training.actor.prompts import THERAPIST_SYSTEM_PROMPT
 
 
 class AITherapist:
-    def __init__(self, deployment: Optional[str] = None, fix_roles: bool = False):
-        """
-        fix_roles: the original code forwards OpenAI-style roles unchanged, so in
-            DPO rollouts (therapist = "user", patient = "assistant") the therapist
-            model sees its own turns as user turns. Default False reproduces the
-            released data; True flips roles so the therapist sees itself as
-            "assistant".
-        """
+    def __init__(self, deployment: Optional[str] = None):
         self.deployment = deployment or require_env(
             "ANGEL_THERAPIST_DEPLOYMENT", purpose="the rollout therapist"
         )
-        self.fix_roles = fix_roles
         self.client = azure_openai_client(
             endpoint=get_env("ANGEL_THERAPIST_AZURE_ENDPOINT"),
             api_key=get_env("ANGEL_THERAPIST_AZURE_API_KEY"),
@@ -40,7 +32,9 @@ class AITherapist:
         """
         Accepts either [{"role": "patient"|"therapist", ...}] or OpenAI-style
         [{"role": "system"|"user"|"assistant", ...}]. External system prompts
-        (the patient's) are dropped. If there is no user message yet, a starter
+        (the patient's) are dropped. OpenAI-style roles are from the patient's
+        side (therapist = "user", patient = "assistant"), so they are flipped
+        for the therapist. If there is no user message yet, a starter
         message is injected so the therapist can open the session.
         """
         messages: List[Dict] = [{"role": "system", "content": THERAPIST_SYSTEM_PROMPT}]
@@ -55,8 +49,7 @@ class AITherapist:
             if role in {"system", "user", "assistant"}:
                 if role == "system":
                     continue
-                if self.fix_roles:
-                    role = "assistant" if role == "user" else "user"
+                role = "assistant" if role == "user" else "user"
                 if role == "user":
                     has_user = True
                 messages.append({"role": role, "content": content})

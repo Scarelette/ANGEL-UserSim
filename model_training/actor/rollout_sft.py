@@ -37,9 +37,8 @@ def is_masked(item: dict) -> bool:
 
 
 def arena(patient: PromptedPatient, therapist: AITherapist, patient_list, mask_list,
-          max_turns: int = 15, verbose: bool = True, early_stop: bool = False,
-          paper_prompt: bool = False):
-    patient.set_system_prompt(generate_system_prompt(patient_list, mask_list, paper_categories=paper_prompt))
+          max_turns: int = 15, verbose: bool = True, early_stop: bool = False):
+    patient.set_system_prompt(generate_system_prompt(patient_list, mask_list))
     conversation = []
     for turn in range(max_turns):
         if verbose:
@@ -77,11 +76,6 @@ def main():
     ap.add_argument("--start", type=int, default=0, help="first row index (for sharding)")
     ap.add_argument("--end", type=int, default=None, help="stop before this row index")
     ap.add_argument("--quiet", action="store_true")
-    ap.add_argument("--on-unmasked", choices=["skip", "stop"], default="skip",
-                    help="row left unmasked by mask_generator: 'skip' continues past it; 'stop' ends "
-                         "the file there, as the paper's run did (423 conversations)")
-    ap.add_argument("--paper-prompt", action="store_true",
-                    help="leave \"Physiological Sensation\" out of the patient prompt's states, as the paper's run did")
     args = ap.parse_args()
 
     patient = PromptedPatient(args.patient_model)
@@ -96,16 +90,11 @@ def main():
                 continue
             item = json.loads(line)
             if not is_masked(item):
-                # The paper's run ended at the first such row in each file.
-                if args.on_unmasked == "stop":
-                    print(f"[stop at row {idx}] unmasked network")
-                    break
                 print(f"[skip row {idx}] unmasked network")
                 skipped += 1
                 continue
             conversation = arena(patient, therapist, item["new_graph"], item["mask"],
-                                 max_turns=args.max_turns, verbose=not args.quiet,
-                                 paper_prompt=args.paper_prompt)
+                                 max_turns=args.max_turns, verbose=not args.quiet)
             f_out.write(json.dumps({"messages": conversation}, ensure_ascii=False) + "\n")
             written += 1
     print(f"wrote {written} conversations, skipped {skipped} unmasked networks")

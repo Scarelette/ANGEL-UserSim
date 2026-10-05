@@ -13,3 +13,5 @@ wandb==0.24.0
 # API clients for data generation
 openai==2.16.0
 anthropic==0.83.0
+# Graph-reconstruction DPO option (rollout_graph_dpo): node matching
+sentence-transformers==5.2.2

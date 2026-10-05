@@ -284,8 +284,8 @@ class TopicTransitionJudge:
 class GPT5TopicTransitionJudge(TopicTransitionJudge):
     """Prompted GPT-5 judge for topic transition state.
 
-    Uses ``simulate_patient/output_generator.py`` so the transition decision can
-    follow the same model utility already used elsewhere in this repo.
+    Uses ``angel_common.llm.getOutput`` (GPT-5), the same model utility used
+    elsewhere in this repo.
     """
 
     def __init__(self, max_retries: int = 3):

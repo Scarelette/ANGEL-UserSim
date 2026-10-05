@@ -103,6 +103,66 @@ def build_stage2_messages(profile_text: str, symptoms: List[str]) -> List[Dict[s
     ]
 
 
+def load_observer(model_path: str):
+    """Tokenizer and model (bf16, ``device_map="auto"``) for the Observer at ``model_path``."""
+    tokenizer = AutoTokenizer.from_pretrained(model_path, trust_remote_code=True)
+    model = AutoModelForCausalLM.from_pretrained(
+        model_path,
+        torch_dtype=torch.bfloat16,
+        device_map="auto",
+        trust_remote_code=True,
+    )
+    model.eval()
+    return tokenizer, model
+
+
+def predict_network(
+    tokenizer: AutoTokenizer,
+    model: AutoModelForCausalLM,
+    profile_text: str,
+    stage1_max_new_tokens: int = 2048,
+    stage2_max_new_tokens: int = 2048,
+    stage2_retries: int = 10,
+) -> Dict[str, Any]:
+    """One network from ``profile_text``: S1 nodes, then S2 links (retried until a <GRAPH> parses).
+
+    Returns ``symptoms``, ``graph`` and the raw responses; raises if S1 or every S2 try fails.
+    """
+    stage1_response = generate_ans(
+        tokenizer=tokenizer,
+        model=model,
+        messages=build_stage1_messages(profile_text),
+        max_new_tokens=stage1_max_new_tokens,
+    )
+    symptoms = extract_symptoms_and_merge(stage1_response)
+
+    stage2_messages = build_stage2_messages(profile_text, symptoms)
+    stage2_response = ""
+    links: List[Dict[str, str]] = []
+    stage2_error = None
+    for attempt in range(stage2_retries):
+        stage2_response = generate_ans(
+            tokenizer=tokenizer,
+            model=model,
+            messages=stage2_messages,
+            max_new_tokens=stage2_max_new_tokens,
+        )
+        try:
+            links = extract_graph(stage2_response)
+            break
+        except Exception as exc:
+            stage2_error = repr(exc)
+            if attempt == stage2_retries - 1:
+                raise
+    return {
+        "symptoms": symptoms,
+        "graph": links,
+        "stage1_response": stage1_response,
+        "stage2_response": stage2_response,
+        "stage2_error": stage2_error,
+    }
+
+
 def process_profiles(
     input_path: str,
     output_path: str,
@@ -117,14 +177,7 @@ def process_profiles(
     for path in (output_path, error_path):
         if os.path.dirname(path):
             os.makedirs(os.path.dirname(path), exist_ok=True)
-    tokenizer = AutoTokenizer.from_pretrained(model_path, trust_remote_code=True)
-    model = AutoModelForCausalLM.from_pretrained(
-        model_path,
-        torch_dtype=torch.bfloat16,
-        device_map="auto",
-        trust_remote_code=True,
-    )
-    model.eval()
+    tokenizer, model = load_observer(model_path)
 
     processed = 0
     seen = 0
@@ -140,35 +193,14 @@ def process_profiles(
                         profile_text = get_profile_text(item, input_field)
                         print(item.get("source_title") or item.get("id", idx))
 
-                        stage1_messages = build_stage1_messages(profile_text)
-                        stage1_response = generate_ans(
-                            tokenizer=tokenizer,
-                            model=model,
-                            messages=stage1_messages,
-                            max_new_tokens=stage1_max_new_tokens,
+                        net = predict_network(
+                            tokenizer, model, profile_text,
+                            stage1_max_new_tokens=stage1_max_new_tokens,
+                            stage2_max_new_tokens=stage2_max_new_tokens,
+                            stage2_retries=stage2_retries,
                         )
-                        symptoms = extract_symptoms_and_merge(stage1_response)
+                        symptoms, links = net["symptoms"], net["graph"]
                         print("S:\n", symptoms)
-
-                        stage2_messages = build_stage2_messages(profile_text, symptoms)
-                        stage2_response = ""
-                        links: List[Dict[str, str]] = []
-                        stage2_error = None
-
-                        for attempt in range(stage2_retries):
-                            stage2_response = generate_ans(
-                                tokenizer=tokenizer,
-                                model=model,
-                                messages=stage2_messages,
-                                max_new_tokens=stage2_max_new_tokens,
-                            )
-                            try:
-                                links = extract_graph(stage2_response)
-                                break
-                            except Exception as exc:
-                                stage2_error = repr(exc)
-                                if attempt == stage2_retries - 1:
-                                    raise
 
                         new_obj = {
                             "id": item.get("id", idx),
@@ -176,9 +208,9 @@ def process_profiles(
                             input_field: profile_text,
                             "symptoms": symptoms,
                             "graph": links,
-                            "stage1_response": stage1_response,
-                            "stage2_response": stage2_response,
-                            "stage2_error": stage2_error,
+                            "stage1_response": net["stage1_response"],
+                            "stage2_response": net["stage2_response"],
+                            "stage2_error": net["stage2_error"],
                             "original_item": item,
                         }
                         writer.write(new_obj)

@@ -64,11 +64,9 @@ def arena_with_dpo(
     deduper: Optional[Deduper] = None,
     num_candidates: int = 5,
     min_gap: float = 0.0,
-    paper_prompt: bool = False,
 ) -> Tuple[List[Dict[str, str]], List[Dict[str, Any]]]:
     try:
-        patient_system_prompt = generate_system_prompt(patient_list or [], mask_list or [],
-                                                       paper_categories=paper_prompt)
+        patient_system_prompt = generate_system_prompt(patient_list or [], mask_list or [])
     except Exception as e:
         print("[generate_system_prompt failed]", type(e).__name__, e)
         return [], []
@@ -230,8 +228,6 @@ def main():
     ap.add_argument("--base-model", default=None, help="default: resolve_model('base') -> Qwen/Qwen3-8B")
     ap.add_argument("--sft-adapter", default=str(MODELS_DIR / "Qwen-3-8B-Patient-SFT-Actor-5"))
     ap.add_argument("--therapist-deployment", default=None, help="default: $ANGEL_THERAPIST_DEPLOYMENT")
-    ap.add_argument("--therapist-fix-roles", action="store_true",
-                    help="show the therapist its own turns as 'assistant' (the paper's data did not)")
     ap.add_argument("--max-turns", type=int, default=8)
     ap.add_argument("--num-candidates", type=int, default=5)
     ap.add_argument("--min-gap", type=float, default=0.0)
@@ -239,12 +235,10 @@ def main():
     ap.add_argument("--start", type=int, default=0, help="first row index (for sharding)")
     ap.add_argument("--end", type=int, default=None, help="stop before this row index")
     ap.add_argument("--verbose", action="store_true")
-    ap.add_argument("--paper-prompt", action="store_true",
-                    help="leave \"Physiological Sensation\" out of the patient prompt's states, as the paper's run did")
     args = ap.parse_args()
 
     patient = AdapterPatient(resolve_model("base", args.base_model), sft_adapter=str(resolve_path(args.sft_adapter)))
-    therapist = AITherapist(deployment=args.therapist_deployment, fix_roles=args.therapist_fix_roles)
+    therapist = AITherapist(deployment=args.therapist_deployment)
     deduper = Deduper(max_hamming=args.dedup_hamming)
 
     for p in (args.out_conv, args.out_dpo):
@@ -260,7 +254,6 @@ def main():
                 patient, therapist, item["new_graph"], item["mask"],
                 max_turns=args.max_turns, verbose=args.verbose, deduper=deduper,
                 num_candidates=args.num_candidates, min_gap=args.min_gap,
-                paper_prompt=args.paper_prompt,
             )
             if not conv:
                 continue

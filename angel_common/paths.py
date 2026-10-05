@@ -28,13 +28,13 @@ MODELS_DIR = Path(os.environ.get("ANGEL_MODELS_DIR") or REPO_ROOT / "models")
 OUTPUTS_DIR = Path(os.environ.get("ANGEL_OUTPUT_DIR") or REPO_ROOT / "outputs")
 
 # key -> (env var, default local dir name under models/, fallback id)
-# The fallback is used when nothing is found locally; for released checkpoints,
-# set it to the Hugging Face Hub id once the weights are uploaded.
+# The fallback is used when nothing is found locally; for the released
+# checkpoints it is their Hugging Face Hub id (downloaded on first use).
 MODEL_REGISTRY: Dict[str, Tuple[str, str, str]] = {
     # Stage 1: GRPO-trained Qwen3-8B, short profile -> long profile / symptom network.
-    "observer": ("ANGEL_OBSERVER_MODEL", "Qwen3-Observer-800", "Qwen3-Observer-800"),
+    "observer": ("ANGEL_OBSERVER_MODEL", "Angel-Observer", "ChengLi0228/Angel-Observer"),
     # Stage 2: SFT + DPO Qwen3-8B patient role-play model.
-    "actor": ("ANGEL_ACTOR_MODEL", "qwen3-8b-dpo-merged", "qwen3-8b-dpo-merged"),
+    "actor": ("ANGEL_ACTOR_MODEL", "Angel-Actor", "ChengLi0228/Angel-Actor"),
     # Public base / baseline models.
     "base": ("ANGEL_BASE_MODEL", "Qwen3-8B", "Qwen/Qwen3-8B"),
     "eeyore": (
