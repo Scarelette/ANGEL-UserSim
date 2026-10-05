@@ -144,4 +144,9 @@ format each script expects. No real patient data is in this repository.
 
 ## License
 
-*TBA*
+The code is released under the [Apache License 2.0](LICENSE). The models
+([Angel-Observer](https://huggingface.co/ChengLi0228/Angel-Observer),
+[Angel-Actor](https://huggingface.co/ChengLi0228/Angel-Actor)) are also
+Apache-2.0, like their base model, Qwen3-8B. They are research models for
+simulating patients, not clinical tools; see the model cards for intended use
+and limitations.
