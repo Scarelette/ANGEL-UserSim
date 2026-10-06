@@ -155,8 +155,9 @@ a warning.
 **Out of GPU memory.** Let vLLM use more of the GPU with
 `export ANGEL_VLLM_GPU_MEM=0.8`, or switch engines with `--backend hf`.
 
-**Very slow, or no GPU found.** You are probably on a login node or a CPU-only
-machine; see step 3.
+**`no GPU found`** (older versions: `Device string must not be empty`). You are
+on a login node or a CPU-only machine; see step 3. `--backend hf` forces a CPU
+run, which works but is very slow.
 
 ## Settings
 

@@ -16,6 +16,7 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, Optional
 
+from .backends import NoGPUError
 from .config import ActorConfig, ObserverConfig, RunnerConfig
 from .pipeline import AngelModel
 
@@ -122,12 +123,12 @@ def print_profiles(model: AngelModel) -> None:
         print(f"  {item['id']:>3}  {item['label']}")
 
 
-def print_reply(result: Dict[str, Any]) -> None:
-    session = result["session"]
-    model_info = result["model"]
-    stages = "observer+actor" if model_info["observer_used"] else "actor"
+def print_reply(result: Dict[str, Any], *, details: bool = True) -> None:
     print(f"\n[patient] {result['reply']}")
-    print(f"    ({stages}, turn {session['num_turns']}, profile {session['profile'].get('name')})")
+    if details:
+        session = result["session"]
+        stages = "observer+actor" if result["model"]["observer_used"] else "actor"
+        print(f"    ({stages}, turn {session['num_turns']}, profile {session['profile'].get('name')})")
 
 
 def cmd_expand(model: AngelModel, args: argparse.Namespace) -> int:
@@ -202,14 +203,15 @@ def cmd_chat(model: AngelModel, args: argparse.Namespace) -> int:
             result = model.send(
                 args.user, message, session_id=args.session_id, **(profile_kwargs(args) if first else {})
             )
-        except (ModuleNotFoundError, FileNotFoundError) as exc:
+        except (ModuleNotFoundError, FileNotFoundError, NoGPUError) as exc:
             # Setup problems (missing package / model): retrying won't help.
             print(f"[error] {describe_error(exc)}", file=sys.stderr)
             return 2
         except Exception as exc:
             print(f"[error] {describe_error(exc)}", file=sys.stderr)
             continue
-        print_reply(result)
+        # Just the reply mid-conversation; /status has the details.
+        print_reply(result, details=False)
         first = False
 
     model.end(args.user, session_id=args.session_id)
@@ -253,7 +255,7 @@ def main(argv: Optional[list] = None) -> int:
             return cmd_say(model, args)
         if args.command == "chat":
             return cmd_chat(model, args)
-    except (ModuleNotFoundError, FileNotFoundError) as exc:
+    except (ModuleNotFoundError, FileNotFoundError, NoGPUError) as exc:
         print(f"[error] {describe_error(exc)}", file=sys.stderr)
         return 2
     except (ValueError, KeyError) as exc:

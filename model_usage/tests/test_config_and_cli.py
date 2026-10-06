@@ -36,6 +36,14 @@ class TestConfigResolution(unittest.TestCase):
 class TestBackendSelection(unittest.TestCase):
     """`auto` must prefer vLLM and fall back to transformers."""
 
+    def setUp(self):
+        from model_usage.angel import backends
+
+        # Selection logic is under test, not the host: pretend a GPU is present.
+        patcher = mock.patch.object(backends, "_gpu_available", return_value=True)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
     def test_default_is_auto(self):
         self.assertEqual(RunnerConfig().backend, "auto")
 
@@ -63,6 +71,16 @@ class TestBackendSelection(unittest.TestCase):
 
         with mock.patch.object(backends, "vllm_available", return_value=False):
             self.assertEqual(backends.build_backend("auto", "/x").name, "hf")
+
+    def test_no_gpu_fails_fast_except_explicit_hf(self):
+        from model_usage.angel import backends
+
+        with mock.patch.object(backends, "_gpu_available", return_value=False):
+            for kind in ("auto", "vllm"):
+                with self.assertRaises(backends.NoGPUError):
+                    backends.build_backend(kind, "/x")
+            self.assertEqual(backends.build_backend("hf", "/x").name, "hf")
+            self.assertEqual(backends.build_backend("stub", "/x").name, "stub")
 
     def test_resolved_backend_reports_the_concrete_engine(self):
         config = RunnerConfig(backend="stub")
@@ -254,6 +272,37 @@ class TestCliEndToEnd(unittest.TestCase):
         code, out, _ = self.run_cli([])
         self.assertEqual(code, 0)
         self.assertIn("usage:", out)
+
+
+class TestVLLMSamplingFallback(unittest.TestCase):
+    """vLLM has no no_repeat_ngram_size; dropping it must not also drop min_tokens."""
+
+    def test_only_the_unsupported_arg_is_dropped(self):
+        import sys
+        import types
+
+        from model_usage.angel.backends import VLLMBackend
+
+        seen = []
+
+        class FakeSamplingParams:
+            def __init__(self, **kwargs):
+                if "no_repeat_ngram_size" in kwargs:
+                    raise TypeError("Unexpected keyword argument 'no_repeat_ngram_size'")
+                seen.append(kwargs)
+
+        class FakeOutput:
+            def __init__(self):
+                self.outputs = [types.SimpleNamespace(text="ok")]
+
+        fake_vllm = types.SimpleNamespace(SamplingParams=FakeSamplingParams)
+        backend = VLLMBackend("/x")
+        backend._llm = types.SimpleNamespace(chat=lambda *a, **k: [FakeOutput()])
+        with mock.patch.dict(sys.modules, {"vllm": fake_vllm}):
+            text = backend.generate([{"role": "user", "content": "hi"}],
+                                    min_new_tokens=12, no_repeat_ngram_size=3)
+        self.assertEqual(text, "ok")
+        self.assertEqual(seen[-1].get("min_tokens"), 12)
 
 
 if __name__ == "__main__":

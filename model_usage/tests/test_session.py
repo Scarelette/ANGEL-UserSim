@@ -387,5 +387,58 @@ class TestRetryLoopTerminates(unittest.TestCase):
         self.assertLessEqual(len(backend.calls), 1 + model.config.actor.max_retries)
 
 
+class TestResendingTheSameProfile(unittest.TestCase):
+    """The Observer samples, so re-expanding a resent profile used to yield a
+    different fingerprint and silently restart the conversation."""
+
+    def _varying_observer(self):
+        backend = StubBackend()
+        original = backend.generate
+        counter = {"n": 0}
+
+        def generate(messages, **params):
+            text = original(messages, **params)
+            counter["n"] += 1
+            profile = json.loads(text) if text.lstrip().startswith("{") else None
+            if profile is None:
+                return text
+            profile["identity"]["name"] = f"Sample{counter['n']}"  # like a fresh sample
+            return json.dumps(profile)
+
+        backend.generate = generate
+        return backend, counter
+
+    def test_resent_short_profile_continues_without_re_expanding(self):
+        observer, counter = self._varying_observer()
+        model = make_model()
+        model._observer_backend = observer
+        model.send("alice", "Hi.", short_profile="Mara, 34, exhausted.")
+        second = model.send("alice", "And work?", short_profile="Mara, 34, exhausted.")
+        self.assertEqual(second["session"]["num_turns"], 2)
+        self.assertEqual(counter["n"], 1)
+
+    def test_a_different_short_profile_still_restarts(self):
+        model = make_model()
+        model.send("alice", "Hi.", short_profile="Mara, 34, exhausted.")
+        second = model.send("alice", "Hi.", short_profile="Sam, 29, anxious at work.")
+        self.assertEqual(second["session"]["num_turns"], 1)
+
+
+class TestNumericProfileIdWithDuplicateIds(unittest.TestCase):
+    def test_numeric_id_picks_by_position_even_when_canonical_ids_collide(self):
+        import tempfile
+
+        first = load_example()
+        second = copy.deepcopy(first)
+        second["background"] = ["A different person who shares the name and source."]
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "dupes.jsonl"
+            path.write_text(json.dumps(first) + "\n" + json.dumps(second) + "\n", encoding="utf-8")
+            model = make_model(jsonl_path=path)
+            self.assertEqual(model.list_profiles()[0]["canonical_id"], model.list_profiles()[1]["canonical_id"])
+            loaded = model.load_builtin_profile("1")
+            self.assertEqual(loaded["_raw_profile"]["background"], second["background"])
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -38,6 +38,7 @@ from .patient_profile import (
     is_rich_profile_schema,
     list_profile_options,
     load_profile_by_id,
+    load_profiles_from_jsonl,
 )
 
 
@@ -65,6 +66,9 @@ class Session:
     actor: Actor
     fingerprint: str
     expansion: Optional[ExpansionResult] = None
+    # What the caller asked for (before the sampled Observer ran), so resending
+    # the same profile continues the conversation instead of re-expanding it.
+    request_key: Optional[str] = None
     meta: Dict[str, Any] = field(default_factory=dict)
 
     @property
@@ -124,7 +128,14 @@ class AngelModel:
         )
 
     def load_builtin_profile(self, selector: str) -> Dict[str, Any]:
-        canonical = self.resolve_profile_id(selector)
+        value = (selector or "").strip()
+        if value.isdigit():
+            # By position: canonical ids (name + source_title) need not be unique,
+            # and looking one up returns the first profile that shares it.
+            self.resolve_profile_id(value)  # range check with a readable error
+            line_num, raw = load_profiles_from_jsonl(Path(self.config.jsonl_path))[int(value)]
+            return convert_rich_profile_to_internal(raw, line_num)
+        canonical = self.resolve_profile_id(value)
         return load_profile_by_id(canonical, Path(self.config.jsonl_path))
 
     # -- stage 1 -----------------------------------------------------------
@@ -263,13 +274,23 @@ class AngelModel:
         if not message:
             raise ValueError("message is empty")
 
-        internal, expansion = self._resolve_requested_profile(
-            profile=profile, profile_id=profile_id, short_profile=short_profile,
-            source_title=source_title, expand=expand,
-        )
-
         key = f"{user}::{session_id}"
         session = self.sessions.get(key)
+
+        request_key = None
+        if profile is not None or profile_id or short_profile:
+            request_key = profile_fingerprint(
+                {"profile": profile, "profile_id": profile_id, "short_profile": short_profile,
+                 "source_title": source_title, "expand": expand}
+            )
+
+        if session is not None and request_key is not None and session.request_key == request_key:
+            internal, expansion = None, None  # same request: keep the conversation
+        else:
+            internal, expansion = self._resolve_requested_profile(
+                profile=profile, profile_id=profile_id, short_profile=short_profile,
+                source_title=source_title, expand=expand,
+            )
 
         if session is None and internal is None:
             raise ValueError(
@@ -286,8 +307,11 @@ class AngelModel:
                     actor=self._build_actor(internal),
                     fingerprint=fingerprint,
                     expansion=expansion,
+                    request_key=request_key,
                 )
                 self.sessions[key] = session
+            else:
+                session.request_key = request_key
 
         assert session is not None
         reply = session.actor.reply(message)

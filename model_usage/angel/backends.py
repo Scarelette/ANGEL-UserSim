@@ -412,14 +412,20 @@ class VLLMBackend:
             sp_kwargs["no_repeat_ngram_size"] = no_repeat_ngram_size
         if min_new_tokens:
             sp_kwargs["min_tokens"] = min_new_tokens
-        try:
-            sampling = SamplingParams(**sp_kwargs)
-        except TypeError:  # older vLLM without an optional arg -> drop the extras
-            sp_kwargs.pop("no_repeat_ngram_size", None)
-            sp_kwargs.pop("min_tokens", None)
-            sampling = SamplingParams(**sp_kwargs)
+        # Drop optional args this vLLM rejects one at a time, so an unsupported
+        # one doesn't take the others with it. vLLM has no no_repeat_ngram_size
+        # at all (transformers-only); min_tokens is supported by any recent vLLM.
+        for optional in ("no_repeat_ngram_size", "min_tokens", None):
+            try:
+                sampling = SamplingParams(**sp_kwargs)
+                break
+            except TypeError:
+                if optional is None:
+                    raise
+                sp_kwargs.pop(optional, None)
 
-        chat_kwargs: Dict[str, Any] = {}
+        # No per-call progress bars: they clutter the interactive chat.
+        chat_kwargs: Dict[str, Any] = {"use_tqdm": False}
         if enable_thinking is not None:  # Qwen3: toggle the <think> block
             chat_kwargs["chat_template_kwargs"] = {"enable_thinking": enable_thinking}
 
@@ -468,6 +474,28 @@ def vllm_available() -> bool:
     return _VLLM_ERROR is None
 
 
+class NoGPUError(RuntimeError):
+    """No CUDA GPU is visible (e.g. on a login node)."""
+
+
+def _gpu_available() -> bool:
+    # A missing torch must surface as ModuleNotFoundError (with the install
+    # hint), not be misreported as "no GPU".
+    import torch
+
+    # device_count() asks NVML and leaves CUDA uninitialized; is_available()
+    # would initialize it here and break vLLM's forked engine process
+    # ("Cannot re-initialize CUDA in forked subprocess").
+    return torch.cuda.device_count() > 0
+
+
+_NO_GPU_HINT = (
+    "no GPU found; you are probably on a login node. Get a GPU node first "
+    "(e.g. `srun --gres=gpu:1 --mem=64G --time=01:00:00 --pty bash`), "
+    "or use `--backend stub` for canned replies (`--backend hf` forces a very slow CPU run)."
+)
+
+
 def build_backend(
     kind: str,
     model_path: str,
@@ -485,6 +513,11 @@ def build_backend(
 
     if kind == "stub":
         return StubBackend()
+
+    # vLLM fails on CPU-only hosts with an opaque "Device string must not be
+    # empty"; catch that here. An explicit `hf` is still allowed on CPU.
+    if kind in ("auto", "vllm") and not _gpu_available():
+        raise NoGPUError(_NO_GPU_HINT)
 
     if kind == "auto":
         if vllm_available():

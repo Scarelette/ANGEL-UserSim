@@ -12,7 +12,7 @@ Everything runs locally in this process: import it and talk to the model.
 """
 
 from .actor import Actor, profile_summary
-from .backends import Backend, HFBackend, StubBackend, build_backend
+from .backends import Backend, HFBackend, NoGPUError, StubBackend, build_backend
 from .config import ActorConfig, ObserverConfig, RunnerConfig
 from .observer import ExpansionResult, Observer
 from . import demo_prompt
@@ -33,6 +33,7 @@ __all__ = [
     "Session",
     "StubBackend",
     "adapt_observer_profile",
+    "NoGPUError",
     "build_backend",
     "build_minimal_rich_profile",
     "demo_prompt",
