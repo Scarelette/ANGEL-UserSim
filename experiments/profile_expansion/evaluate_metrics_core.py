@@ -65,6 +65,21 @@ def conversation_hash(record: Dict[str, Any]) -> str:
     ).hexdigest()
 
 
+def _scored(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Records the judge actually scored (a failed call has score None)."""
+    return [item for item in items if item.get("score") is not None]
+
+
+def _mean_or_none(values) -> Optional[float]:
+    values = list(values)
+    return mean(values) if values else None
+
+
+def _alignment_ok(cached: Any) -> bool:
+    """A cached alignment that is usable; failed judge calls are re-scored."""
+    return isinstance(cached, dict) and cached.get("score") is not None
+
+
 def build_profile_alignment_section(alignment_by_record: List[Dict[str, Any]]) -> Dict[str, Any]:
     grouped: Dict[Tuple[Any, Any], List[Dict[str, Any]]] = defaultdict(list)
     for item in alignment_by_record:
@@ -87,8 +102,9 @@ def build_profile_alignment_section(alignment_by_record: List[Dict[str, Any]]) -
                 "profile_id": profile_id,
                 "source_title": group[0].get("source_title"),
                 "num_conversations": len(group),
-                "avg_score_1_to_5": mean(item.get("avg_score_1_to_5", 0.0) for item in group),
-                "score": mean(item.get("score", 0.0) for item in group),
+                "num_scored": len(_scored(group)),
+                "avg_score_1_to_5": _mean_or_none(item["avg_score_1_to_5"] for item in _scored(group)),
+                "score": _mean_or_none(item["score"] for item in _scored(group)),
                 "aspect_scores_1_to_5": aspect_means,
             }
         )
@@ -117,8 +133,9 @@ def build_profile_alignment_section(alignment_by_record: List[Dict[str, Any]]) -
                 "conversation_hash": convo_hash,
                 "source_title": group[0].get("source_title"),
                 "num_records": len(group),
-                "avg_score_1_to_5": mean(item.get("avg_score_1_to_5", 0.0) for item in group),
-                "score": mean(item.get("score", 0.0) for item in group),
+                "num_scored": len(_scored(group)),
+                "avg_score_1_to_5": _mean_or_none(item["avg_score_1_to_5"] for item in _scored(group)),
+                "score": _mean_or_none(item["score"] for item in _scored(group)),
                 "aspect_scores_1_to_5": aspect_means,
             }
         )
@@ -128,8 +145,9 @@ def build_profile_alignment_section(alignment_by_record: List[Dict[str, Any]]) -
     )
 
     return {
-        "score": mean(item.get("score", 0.0) for item in alignment_by_record),
-        "avg_score_1_to_5": mean(item.get("avg_score_1_to_5", 0.0) for item in alignment_by_record),
+        "score": _mean_or_none(item["score"] for item in _scored(alignment_by_record)),
+        "avg_score_1_to_5": _mean_or_none(item["avg_score_1_to_5"] for item in _scored(alignment_by_record)),
+        "num_judge_failures": len(alignment_by_record) - len(_scored(alignment_by_record)),
         "records": alignment_by_record,
         "by_model_profile": by_model_profile,
         "by_conversation_model_profile": by_conversation_model_profile,
@@ -219,8 +237,10 @@ def checkpoint_summary(
 ) -> Dict[str, float]:
     simulation_profiles = simulation_profiles or []
     return {
-        "profile_alignment_norm": mean(item.get("score", 0.0) for item in alignment_by_record),
-        "profile_alignment_avg_1_to_5": mean(item.get("avg_score_1_to_5", 0.0) for item in alignment_by_record),
+        "profile_alignment_norm": _mean_or_none(item["score"] for item in _scored(alignment_by_record)),
+        "profile_alignment_avg_1_to_5": _mean_or_none(
+            item["avg_score_1_to_5"] for item in _scored(alignment_by_record)
+        ),
         "behavior_diversity": mean(
             item.get("behavior_diversity", 0.0)
             for item in behavior_profiles
@@ -442,7 +462,7 @@ def evaluate(
                     cache_key = record_cache_key_fn(record)
                     if not cache_key or cache_key in pending:
                         continue
-                    if isinstance(profile_alignment_cache.get(cache_key), dict):
+                    if _alignment_ok(profile_alignment_cache.get(cache_key)):
                         continue
                     pending[cache_key] = record
 
@@ -476,7 +496,8 @@ def evaluate(
                         ]
                         for future in concurrent.futures.as_completed(futures):
                             cache_key, result = future.result()
-                            profile_alignment_cache[cache_key] = result
+                            if _alignment_ok(result):  # failures are re-scored below
+                                profile_alignment_cache[cache_key] = result
                     print("[ProfileAlignment] adaptive pre-scoring complete", flush=True)
 
             for idx in range(start_idx, len(records)):
@@ -487,13 +508,13 @@ def evaluate(
                     if cache_key is not None and profile_alignment_cache is not None
                     else None
                 )
-                if isinstance(cached_alignment, dict):
+                if _alignment_ok(cached_alignment):
                     alignment = cached_alignment
                     if cache_stats is not None:
                         cache_stats["profile_alignment_hits"] = cache_stats.get("profile_alignment_hits", 0) + 1
                 else:
                     alignment = score_profile_alignment(record)
-                    if cache_key is not None and profile_alignment_cache is not None:
+                    if cache_key is not None and profile_alignment_cache is not None and _alignment_ok(alignment):
                         profile_alignment_cache[cache_key] = alignment
                     if cache_stats is not None:
                         cache_stats["profile_alignment_misses"] = cache_stats.get("profile_alignment_misses", 0) + 1
@@ -502,7 +523,8 @@ def evaluate(
                 print(
                     f"[ProfileAlignment] conversation={idx + 1}/{len(records)} "
                     f"profile_id={record.get('profile_id')} model={record.get('model')} "
-                    f"avg_1_to_5={alignment.get('avg_score_1_to_5', 0):.3f}",
+                    + (f"avg_1_to_5={alignment['avg_score_1_to_5']:.3f}" if _alignment_ok(alignment)
+                       else f"JUDGE FAILED ({alignment.get('parse_error') or 'no scores'})"),
                     flush=True,
                 )
                 alignment_by_record.append(

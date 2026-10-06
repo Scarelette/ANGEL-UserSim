@@ -170,8 +170,10 @@ def score_profile_alignment(record: Dict[str, Any], on_error=None) -> Dict[str, 
             aspect_reasons[key] = ""
 
     valid_scores = [score for score in aspect_scores.values() if score is not None]
-    avg_score_1_to_5 = mean(valid_scores)
-    score = avg_score_1_to_5 / 5.0 if valid_scores else 0.0
+    # A failed judge call is missing data, not a 0 (worst) score: None keeps it
+    # out of every mean (and out of the cache, so --resume retries it).
+    avg_score_1_to_5 = mean(valid_scores) if valid_scores else None
+    score = avg_score_1_to_5 / 5.0 if valid_scores else None
 
     return {
         "metric": "profile_alignment",

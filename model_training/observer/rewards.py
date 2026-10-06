@@ -36,6 +36,8 @@ def format_reward_s1(json_str: str) -> float:
         obj = json.loads(json_str)
     except Exception:
         return -1.0
+    if not isinstance(obj, dict):
+        return -0.8
     if set(obj.keys()) != {"symptoms", "external_factors"}:
         return -0.8
     if (
@@ -53,6 +55,8 @@ def format_reward_s2(json_str: str) -> float:
         obj = json.loads(json_str)
     except Exception:
         return -1.0
+    if not isinstance(obj, dict):
+        return -0.8
     if set(obj.keys()) != {"links"}:
         return -0.8
     links = obj["links"]
@@ -114,7 +118,16 @@ def symptom_graph_reward_s1(match_regex) -> Callable:
             except Exception:
                 rewards.append(-1.0)
                 continue
-            pred_nodes = obj.get("symptoms", []) + obj.get("external_factors", [])
+            if not isinstance(obj, dict):
+                rewards.append(-1.0)
+                continue
+            # A malformed field (e.g. "symptoms": "low mood") must score low,
+            # not raise and kill the GRPO step; format_reward_s1 penalises it.
+            pred_nodes = [
+                x for key in ("symptoms", "external_factors")
+                if isinstance(obj.get(key), list)
+                for x in obj[key] if isinstance(x, str) and x.strip()
+            ]
             if not pred_nodes:
                 rewards.append(-1.0)
                 continue

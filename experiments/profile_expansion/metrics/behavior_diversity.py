@@ -663,6 +663,8 @@ def _record_cache_lookup(
         return None
     if entry.get("schema_version") != EXTRACTION_CACHE_ENTRY_VERSION:
         return None
+    if entry.get("parse_error"):
+        return None  # a failed extraction is retried, not replayed from the cache
 
     extracted = _deserialize_extracted_attributes(entry.get("extracted"))
     parse_error = str(entry.get("parse_error") or "")
@@ -683,7 +685,7 @@ def _record_cache_store(
     parse_error: str,
     topics_with_patient_text: Set[str],
 ) -> None:
-    if not cache_key or extraction_cache is None:
+    if not cache_key or extraction_cache is None or parse_error:
         return
     extraction_cache[cache_key] = {
         "schema_version": EXTRACTION_CACHE_ENTRY_VERSION,

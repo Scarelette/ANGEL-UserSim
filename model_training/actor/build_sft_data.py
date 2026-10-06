@@ -60,7 +60,7 @@ def main():
     out = Path(args.output)
     out.parent.mkdir(parents=True, exist_ok=True)
     n = 0
-    with open(out, "a") as writer:
+    with open(out, "w") as writer:  # overwrite: a re-run must not duplicate examples
         for path in args.inputs:
             with open(resolve_path(path)) as reader:
                 for line in reader:
